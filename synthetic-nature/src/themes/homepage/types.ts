@@ -31,8 +31,8 @@ const ALL_HOMEPAGE_THEMES: HomepageThemeMeta[] = [
   { id: 'anime-purple_flowers', label: 'Purple flowers', short: 'U' },
 ]
 
-// The lite docker image ships zero theme videos, and Nebula drift (the first
-// entry) is the only homepage theme that needs none — it's a pure WebGL
+// The lite docker image ships no homepage theme videos, and Nebula drift (the
+// first entry) is the only homepage theme that needs none — it's a pure WebGL
 // shader. Slicing here (not in consumers) keeps every picker, fallback, and
 // localStorage guard consistent: in a lite build the app simply has one
 // homepage theme. See src/lib/variant.ts.

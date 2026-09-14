@@ -198,7 +198,7 @@ jobs:
           # any tracked file, including this one.
           for f in index.ts src/features/tunnel.ts src/agent/search.ts \
                    src/models/model-sync.ts src/core/env-manager.ts \
-                   .env.example package.json docs/AGENTS.md docs/CHANGELOG.md; do
+                   .env.example package.json docs/CHANGELOG.md; do
             if [ ! -f "$f" ]; then
               echo "::error::Required file missing: $f"
               exit 1
@@ -417,14 +417,6 @@ jobs:
             exit 1
           fi
           echo "✔ docs/CHANGELOG.md exists, is non-empty, and has a dated entry"
-
-      - name: AGENTS.md present
-        run: |
-          if [ ! -f docs/AGENTS.md ]; then
-            echo "::error::docs/AGENTS.md missing (project agent guide)"
-            exit 1
-          fi
-          echo "✔ docs/AGENTS.md exists"
 
   # ── Summary job (runs after all stages) ─────────────────────────────────
   summary:

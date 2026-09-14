@@ -2,10 +2,11 @@
 # ENZO — self-hosted docker image
 #
 # Two variants of the same image, chosen at build time:
-#   --build-arg THEME_VARIANT=lite  (default) → no theme videos (image
-#       downloads ~150MB compressed). Homepage: Nebula drift (pure WebGL).
-#       Workspace/terminal: Default Particles (pure three.js). Both need
-#       zero video files.
+#   --build-arg THEME_VARIANT=lite  (default) → one theme video: the 3.3MB
+#       AI-animated NYC subway ride loop (see marketplace/CREDITS.md) — the
+#       one Marketplace workspace theme the lite registry carries beyond the
+#       WebGL default. Homepage = Nebula drift (pure WebGL). Image stays
+#       ~150MB compressed.
 #   --build-arg THEME_VARIANT=full  → all 23 theme videos (~470MB compressed),
 #       every homepage + workspace theme, exactly like the hosted deployment.
 #
@@ -33,9 +34,15 @@ COPY synthetic-nature/package.json synthetic-nature/package-lock.json ./
 RUN npm ci
 
 COPY synthetic-nature/ ./
-# The lite image ships no video files at all — delete them BEFORE the build so
-# vite's copy of public/ → dist/ stays small too.
-RUN if [ "$THEME_VARIANT" = "lite" ]; then find public/background_elements -name '*.mp4' -delete; fi
+# The lite image keeps exactly one theme video — the 3.3MB AI-animated NYC
+# subway loop — by name (a size cutoff keeps every small file, and the
+# homepage/ carries a 1MB _reversed orphan whose forward partner is deleted,
+# so a pull would ship a second, unreachable video). Everything else is
+# deleted BEFORE the build so vite's copy of public/ → dist/ stays small too.
+RUN if [ "$THEME_VARIANT" = "lite" ]; then \
+      find public/background_elements -name '*.mp4' \
+        ! -name 'Subway_doors_and_tunnel_view_202609111948_gwr_loop.mp4' -delete; \
+    fi
 # VITE_* flags are statically replaced at build time (see src/lib/variant.ts):
 # GOOGLE_AUTH=false dead-code-eliminates the Google login branch entirely.
 RUN VITE_GOOGLE_AUTH=0 VITE_THEME_VARIANT=$THEME_VARIANT npm run build

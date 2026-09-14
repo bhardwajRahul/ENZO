@@ -93,7 +93,7 @@ token instead, which works fine.
   src/core/              build-verify (does the generated project run?), memory,
                          env-manager (the only module that rewrites .env), preview
   src/features/          tunnel (OpenAI-compatible /api/v1), featureRoutes
-                         (Google OAuth handshake for Gmail/Calendar), ui-ux-search, unsplash
+                         (Google OAuth handshake for Gmail/Calendar), ui-ux-search
   src/models/            model-sync (the catalog), model-info, health, throttle
                          (liveness probes + per-provider pacing and budgets)
   src/projects/          project (multi-file project host), project-runtime
@@ -152,8 +152,6 @@ imports at runtime, so nothing but that guard catches it before deploy.
   who cannot act on them. Keep it that way when editing.
 - [SECURITY.md](SECURITY.md) — threat model: what's encrypted, what isn't, and
   what the sandbox does and does not stop.
-- [AGENTS.md](AGENTS.md) — conventions and gotchas for anyone (human or agent)
-  editing this repo.
 - [PROJECT_REPORT.md](PROJECT_REPORT.md) — architecture, current
   status, known limitations, technical debt.
 - [GUIDEBOOK.md](GUIDEBOOK.md) — driving OpenCode on this repo.
@@ -161,7 +159,6 @@ imports at runtime, so nothing but that guard catches it before deploy.
 
 ## Contributing
 
-Read [AGENTS.md](AGENTS.md) first — it records the conventions and the traps.
 The short version: `npm run ci` must pass, provider keys never get hardcoded, and
 if you touch a `enzo.keys.*` value in the frontend it goes through
 `keyVault.ts` or the build fails on purpose.

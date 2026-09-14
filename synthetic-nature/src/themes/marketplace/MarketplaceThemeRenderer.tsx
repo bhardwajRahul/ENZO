@@ -27,8 +27,9 @@ export function MarketplaceThemeRenderer({
     return (
       <>
         <MarketplaceCyberpunkSky scene={cyberpunkScene} />
-        {/* Dark overlay to reduce brightness */}
-        <div className="fixed inset-0 z-0 bg-black/40 pointer-events-none" />
+        {/* Legibility scrim. Flat /65 rather than a gradient: the catalog scrolls,
+            so any vertical falloff would leave some rows on a bright band. */}
+        <div className="fixed inset-0 z-0 bg-black/65 pointer-events-none" />
       </>
     )
   }
@@ -42,8 +43,8 @@ export function MarketplaceThemeRenderer({
           onPreloadRequest={onPreloadRequest}
         />
       </Suspense>
-      {/* Dark overlay to reduce brightness */}
-      <div className="fixed inset-0 z-0 bg-black/40 pointer-events-none" />
+      {/* Same scrim as the cyberpunk branch above. */}
+      <div className="fixed inset-0 z-0 bg-black/65 pointer-events-none" />
     </>
   )
 }

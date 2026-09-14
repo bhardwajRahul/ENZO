@@ -48,7 +48,7 @@ const Strip = styled.div<{ $flat: boolean }>`
   /* Faint full waveform underneath — like the dim paper trace on a real
      monitor, it keeps the strip's footprint legible between sweeps. */
   .base polyline {
-    stroke: ${(p) => (p.$flat ? 'rgba(248, 113, 113, 0.18)' : 'rgba(74, 222, 128, 0.16)')};
+    stroke: ${(p) => (p.$flat ? 'rgba(201, 107, 98, 0.22)' : 'rgba(255, 255, 255, 0.16)')};
   }
 
   /* The live sweep — window opens at the left, closes at the right. */
@@ -56,14 +56,12 @@ const Strip = styled.div<{ $flat: boolean }>`
     animation: sysPulseSweep 2.5s linear infinite;
 
     polyline {
-      stroke: #4ade80;
-      filter: drop-shadow(0 0 4px rgba(74, 222, 128, 0.55));
+      stroke: rgba(255, 255, 255, 0.85);
     }
   }
 
   .flat polyline {
-    stroke: #f87171;
-    filter: drop-shadow(0 0 3px rgba(248, 113, 113, 0.45));
+    stroke: #c96b62;
   }
 
   @keyframes sysPulseSweep {
@@ -130,7 +128,7 @@ export function SystemPulse() {
           <polyline points={flat ? FLAT_POINTS : ECG_POINTS} />
         </svg>
       </Strip>
-      <span className={`font-mono text-[10px] ${flat ? 'text-red-400' : 'text-white/40'}`}>
+      <span className={`font-mono text-[10px] ${flat ? 'text-[#c96b62]' : 'text-white/45'}`}>
         {flat ? 'FLATLINE' : 'ONLINE'}
       </span>
     </div>

@@ -160,12 +160,42 @@ const timeAgo = (ts?: number): string => {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+// ── Draft autosave ────────────────────────────────────────────────────────────
+// The build flow (describe → review) is easy to lose to a refresh or an
+// accidental Cancel. We mirror it to a device-local draft every second so it can
+// be resumed later. No secrets live here — only the agent design — so plain
+// localStorage is fine (keys stay in the encrypted keyVault).
+
+const DRAFT_KEY = 'enzo.agents.draft'
+
+interface AgentDraft {
+  step: 1 | 2 | 3
+  description: string; urls: string; internet: boolean
+  name: string; systemPrompt: string; tools: string[]
+  scheduleKind: 'none' | 'daily' | 'interval'; dailyTime: string; intervalMin: number
+  pickedSkills: string[]; pickedKnowledge: string[]
+  draft: DraftResult['draft'] | null; gather: GatherResult | null
+  savedAt: number
+}
+
+function loadAgentDraft(): AgentDraft | null {
+  try { const s = localStorage.getItem(DRAFT_KEY); return s ? (JSON.parse(s) as AgentDraft) : null } catch { return null }
+}
+function hasAgentDraft(): boolean {
+  try { return !!localStorage.getItem(DRAFT_KEY) } catch { return false }
+}
+
 // ── Main component ───────────────────────────────────────────────────────────
 
 export default function AgentsSection() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [view, setView] = useState<'list' | 'create' | 'detail'>('list')
   const [detail, setDetail] = useState<Agent | null>(null)
+  const [hasDraft, setHasDraft] = useState(hasAgentDraft)
+  const [access, setAccess] = useState<'idle' | 'connecting' | 'connected' | 'blocked'>(
+    () => (sessionStorage.getItem('enzo.vault.token') ? 'connected' : 'idle'),
+  )
+  const [accessNote, setAccessNote] = useState('')
 
   const refresh = useCallback(async () => {
     const r = await api('/api/agents')
@@ -174,6 +204,24 @@ export default function AgentsSection() {
     // agents the user can still open.
     if (r.ok) setAgents(r.json.agents || [])
   }, [])
+
+  // Agent routes are gated for security (see verifyVaultAccess). This proves the
+  // browser holds a provider key by minting a session token — no master key or
+  // terminal needed. Force a fresh mint past any stale "blocked" flag.
+  const connectBackend = useCallback(async () => {
+    setAccess('connecting'); setAccessNote('')
+    sessionStorage.removeItem('enzo.vault.token')
+    sessionStorage.removeItem('enzo.vault.mintBlocked')
+    const token = await mintVaultToken()
+    if (token) {
+      setAccess('connected')
+      setAccessNote('Verified from this browser — creating, running and saving agents is unlocked.')
+      void refresh()
+    } else {
+      setAccess('blocked')
+      setAccessNote('No provider key found on this device. Add one in the Vault tab, then reconnect.')
+    }
+  }, [refresh])
 
   useEffect(() => { void refresh() }, [refresh])
 
@@ -193,11 +241,58 @@ export default function AgentsSection() {
             accumulating memory out. Runs on demand or on a schedule.
           </p>
         </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {hasDraft && (
+            <button
+              onClick={() => setView('create')}
+              className="rounded-full border px-4 py-2.5 font-mono-display text-[11px] uppercase tracking-[0.2em] transition hover:bg-white/5"
+              style={{ borderColor: 'rgba(240,150,138,0.35)', color: '#f0968a' }}
+            >
+              Resume draft
+            </button>
+          )}
+          <button
+            onClick={() => setView('create')}
+            className="rounded-full border border-white/15 bg-white/10 px-5 py-2.5 font-mono-display text-[11px] uppercase tracking-[0.2em] text-white transition hover:bg-white/20"
+          >
+            + New agent
+          </button>
+        </div>
+      </div>
+
+      {/* Backend access — agent routes are gated for security (verifyVaultAccess) */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4">
+        <div className="flex items-start gap-3">
+          <span
+            className="mt-1 h-2 w-2 shrink-0 rounded-full"
+            style={{ backgroundColor: access === 'connected' ? '#f0968a' : 'rgba(255,255,255,0.25)' }}
+          />
+          <div>
+            <div className="text-sm font-medium text-white">
+              {access === 'connected' ? 'Backend connected' : 'Backend access'}
+            </div>
+            <p
+              className="mt-0.5 max-w-md text-xs leading-relaxed"
+              style={{ color: access === 'blocked' ? '#c96b62' : 'rgba(255,255,255,0.45)' }}
+            >
+              {accessNote ||
+                (access === 'connected'
+                  ? 'Verified from this browser — creating, running and saving agents is unlocked.'
+                  : 'Agent routes are locked for security. Connect to prove this browser holds a provider key — no master key or terminal needed.')}
+            </p>
+          </div>
+        </div>
         <button
-          onClick={() => setView('create')}
-          className="shrink-0 rounded-full border border-white/15 bg-white/10 px-5 py-2.5 font-mono-display text-[11px] uppercase tracking-[0.2em] text-white transition hover:bg-white/20"
+          onClick={connectBackend}
+          disabled={access === 'connecting'}
+          className="shrink-0 rounded-full px-5 py-2 font-mono-display text-[11px] uppercase tracking-[0.2em] transition disabled:opacity-60"
+          style={
+            access === 'connected'
+              ? { border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.85)' }
+              : { background: '#f0968a', color: '#0b0b0b' }
+          }
         >
-          + New agent
+          {access === 'connecting' ? 'Connecting…' : access === 'connected' ? 'Reconnect' : 'Connect'}
         </button>
       </div>
 
@@ -213,8 +308,8 @@ export default function AgentsSection() {
 
       {view === 'create' && (
         <CreateAgentModal
-          onClose={() => setView('list')}
-          onSaved={() => { setView('list'); void refresh() }}
+          onClose={() => { setView('list'); setHasDraft(hasAgentDraft()) }}
+          onSaved={() => { setView('list'); setHasDraft(hasAgentDraft()); void refresh() }}
         />
       )}
 
@@ -345,27 +440,63 @@ function CreateAgentModal({
   onClose: () => void
   onSaved: () => void
 }) {
-  const [step, setStep] = useState<1 | 2 | 3>(1)
-  const [description, setDescription] = useState('')
-  const [urls, setUrls] = useState('')
-  const [internet, setInternet] = useState(false)
+  const [draft0] = useState(loadAgentDraft)
+  const [step, setStep] = useState<1 | 2 | 3>(draft0?.step ?? 1)
+  const [description, setDescription] = useState(draft0?.description ?? '')
+  const [urls, setUrls] = useState(draft0?.urls ?? '')
+  const [internet, setInternet] = useState(draft0?.internet ?? false)
   const [drafting, setDrafting] = useState(false)
   const [draftError, setDraftError] = useState<string | null>(null)
-  const [draft, setDraft] = useState<DraftResult['draft'] | null>(null)
-  const [gather, setGather] = useState<GatherResult | null>(null)
+  const [draft, setDraft] = useState<DraftResult['draft'] | null>(draft0?.draft ?? null)
+  const [gather, setGather] = useState<GatherResult | null>(draft0?.gather ?? null)
 
   // Review form
-  const [name, setName] = useState('')
-  const [systemPrompt, setSystemPrompt] = useState('')
-  const [tools, setTools] = useState<string[]>([])
-  const [scheduleKind, setScheduleKind] = useState<'none' | 'daily' | 'interval'>('none')
-  const [dailyTime, setDailyTime] = useState('09:00')
-  const [intervalMin, setIntervalMin] = useState(30)
-  const [pickedSkills, setPickedSkills] = useState<string[]>([])
-  const [pickedKnowledge, setPickedKnowledge] = useState<string[]>([])
+  const [name, setName] = useState(draft0?.name ?? '')
+  const [systemPrompt, setSystemPrompt] = useState(draft0?.systemPrompt ?? '')
+  const [tools, setTools] = useState<string[]>(draft0?.tools ?? [])
+  const [scheduleKind, setScheduleKind] = useState<'none' | 'daily' | 'interval'>(draft0?.scheduleKind ?? 'none')
+  const [dailyTime, setDailyTime] = useState(draft0?.dailyTime ?? '09:00')
+  const [intervalMin, setIntervalMin] = useState(draft0?.intervalMin ?? 30)
+  const [pickedSkills, setPickedSkills] = useState<string[]>(draft0?.pickedSkills ?? [])
+  const [pickedKnowledge, setPickedKnowledge] = useState<string[]>(draft0?.pickedKnowledge ?? [])
   const [savedAgent, setSavedAgent] = useState<Agent | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+
+  // Autosave the in-progress build every second so a refresh or accidental
+  // Cancel never loses work. Only writes when something changed and there's
+  // something worth keeping; cleared once the agent is actually saved.
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(draft0?.savedAt ?? null)
+  const snap = { step, description, urls, internet, name, systemPrompt, tools, scheduleKind, dailyTime, intervalMin, pickedSkills, pickedKnowledge, draft, gather }
+  const snapRef = useRef(snap)
+  snapRef.current = snap
+  const lastSavedRef = useRef('')
+  useEffect(() => {
+    const id = setInterval(() => {
+      const s = snapRef.current
+      if (!s.description.trim() && !s.draft) return // nothing worth keeping yet
+      const body = JSON.stringify(s)
+      if (body === lastSavedRef.current) return
+      lastSavedRef.current = body
+      try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...s, savedAt: Date.now() })) } catch { /* quota — best-effort */ }
+      setDraftSavedAt(Date.now())
+    }, 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const clearDraft = () => {
+    try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ }
+    lastSavedRef.current = ''
+    setDraftSavedAt(null)
+  }
+  const startOver = () => {
+    clearDraft()
+    setStep(1); setDescription(''); setUrls(''); setInternet(false)
+    setDraft(null); setGather(null); setName(''); setSystemPrompt(''); setTools([])
+    setScheduleKind('none'); setDailyTime('09:00'); setIntervalMin(30)
+    setPickedSkills([]); setPickedKnowledge([])
+    setDraftError(null); setSaveError(null)
+  }
 
   const runDraft = async () => {
     setDrafting(true); setDraftError(null)
@@ -421,6 +552,7 @@ function CreateAgentModal({
         return
       }
       setSavedAgent(r.json.agent)
+      clearDraft()
       setStep(3)
     } finally {
       setSaving(false)
@@ -436,6 +568,21 @@ function CreateAgentModal({
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      {/* Autosave status — the build is mirrored to a device-local draft every second */}
+      <div className="mb-4 flex items-center justify-between text-[10px] text-white/40">
+        <span className="font-mono-display uppercase tracking-[0.2em]">
+          {draftSavedAt ? `Draft saved · ${timeAgo(draftSavedAt)}` : 'Autosaves to this device every second'}
+        </span>
+        {(description.trim() || draft) && step !== 3 && (
+          <button
+            onClick={startOver}
+            className="rounded-full px-3 py-1 font-mono-display uppercase tracking-[0.2em] text-white/40 transition hover:text-white/80"
+          >
+            Start over
+          </button>
+        )}
+      </div>
+
       {/* Step indicator */}
       <div className="mb-6 flex items-center gap-3 font-mono-display text-[10px] uppercase tracking-[0.25em]">
         {(['Describe', 'Review', 'Test'] as const).map((label, i) => (

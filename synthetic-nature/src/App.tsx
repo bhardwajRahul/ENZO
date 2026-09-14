@@ -1,12 +1,12 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react'
 import TerminalSection from './components/TerminalSection'
 import AgentsSection from './components/AgentsSection'
 import { DrawLineText } from './components/ui/draw-line-text'
 import { TactileButton } from './components/ui/tactile-button'
+import { ModelCard } from './components/ui/model-card'
 import { LiquidButton } from './components/ui/liquid-button'
 import MorphPanel from './components/ui/ai-input'
 import { HeaderThemeSelector } from './components/HeaderThemeSelector'
-import { AutoWallpaper, emitWallpaperChanged } from './components/AutoWallpaper'
 import FilmGrain from './components/FilmGrain'
 import { LowPowerToggle } from './components/LowPowerToggle'
 import HomeVignette from './components/HomeVignette'
@@ -29,7 +29,7 @@ import {
   PlatformThanks,
 } from './components/HomepagePlatform'
 import { HomepageReveal } from './components/HomepageReveal'
-import { fadeIn } from './lib/gsapTransitions'
+import { fadeIn, staggerIn } from './lib/gsapTransitions'
 import { mintVaultToken } from './lib/vaultToken'
 import { getProviderKeys, saveProviderKeys, clearAllProviderKeys } from './lib/keyStore'
 import * as keyVault from './lib/keyVault'
@@ -53,12 +53,12 @@ function TypingBrand() {
 import { ThemeSelector } from './components/ThemeSelector'
 import { HomepageThemeRenderer, ThemeVideoWarmup, HOMEPAGE_THEMES, type HomepageTheme } from './themes/homepage'
 import { MarketplaceThemeRenderer, WORKSPACE_THEMES, type WeatherType } from './themes/marketplace'
+import { createPortal } from 'react-dom'
+import { fetchModelInfo, compactNumber, type ModelInfo } from './lib/modelInfo'
 import {
   motion,
   AnimatePresence,
-  useMotionValue,
-  useSpring,
-  useTransform,
+  type Variants,
 } from 'framer-motion'
 import {
   Menu,
@@ -67,10 +67,12 @@ import {
   ArrowRight,
   Wifi,
   RefreshCw,
+  ChevronsRightLeft,
 } from 'lucide-react'
 import { animate, stagger } from 'animejs'
 import { OnboardingView, type OnbStep } from './components/OnboardingView'
 import WeatherWidget from './components/WeatherWidget'
+import MusicPlayer from './components/MusicPlayer'
 import SmokeNav from './components/SmokeNav'
 import { HomepageDocs } from './components/HomepageDocs'
 import { DocsDimOverlay } from './components/DocsDimOverlay'
@@ -117,6 +119,11 @@ export interface CatalogModel {
 // (especially loud when the backend is down). This caches the response for a
 // short window and collapses concurrent callers onto a single in-flight request.
 const MODELS_ENDPOINT = '/api/v1/models'
+
+/** Catalog blurbs that only restate how a model is routed. Anchored and
+ *  template-specific so real prose starting with a provider name survives. */
+const ROUTING_BLURB =
+  /^(HuggingFace serverless model|NVIDIA NIM hosted model|LLM7 usage-based model|Groq-hosted model|Puter gateway model)/i
 
 function formatLatency(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return ''
@@ -854,10 +861,117 @@ function CodexSandboxSimulator({ isLight }: { isLight: boolean }) {
 
 // ─── App Component ────────────────────────────────────────────────────────────
 
+// ─── Floating nav scroll-collapse ──────────────────────────────────────────
+// Transplanted from AnimatedNavFramer (21st.dev): the nav collapses to a slim
+// pill on scroll-down and springs back open on scroll-up. Motion recipe kept
+// 1:1 — same thresholds (collapse >150px down, expand after 80px up), same
+// staggered item/children springs, same menu-glyph pop on the pill, same
+// click-to-reopen. What's adapted to ENZO: the bar animates max-width instead
+// of width (its responsive 92%/md:85%/max-w-6xl sizing stays untouched), and
+// the ENZO brand (DrawLineText) is never hidden — the collapsed pill reads
+// "ENZO ⊞" instead of becoming a lone icon.
+const NAV_COLLAPSE_SCROLL = 150
+const NAV_EXPAND_SCROLL = 80
+
+const navBarVariants: Variants = {
+  expanded: {
+    maxWidth: '72rem',
+    paddingLeft: '1.5rem',
+    paddingRight: '1.5rem',
+    transition: {
+      type: 'spring',
+      damping: 20,
+      stiffness: 300,
+      staggerChildren: 0.07,
+      delayChildren: 0.2,
+    },
+  },
+  collapsed: {
+    maxWidth: '10rem',
+    paddingLeft: '1.25rem',
+    paddingRight: '1.25rem',
+    transition: {
+      type: 'spring',
+      damping: 20,
+      stiffness: 300,
+      when: 'afterChildren',
+      staggerChildren: 0.05,
+      staggerDirection: -1,
+    },
+  },
+}
+
+const navSectionVariants: Variants = {
+  expanded: {
+    opacity: 1,
+    x: 0,
+    scale: 1,
+    transition: { type: 'spring', damping: 15 },
+  },
+  collapsed: {
+    opacity: 0,
+    x: -20,
+    scale: 0.95,
+    transition: { duration: 0.2 },
+  },
+}
+
+const navMenuGlyphVariants: Variants = {
+  expanded: { opacity: 0, scale: 0.8, transition: { duration: 0.2 } },
+  collapsed: {
+    opacity: 1,
+    scale: 1,
+    transition: { type: 'spring', damping: 15, stiffness: 300, delay: 0.15 },
+  },
+}
+
 function App() {
   const [activeModel, setActiveModel] = useState<CatalogModel>(CATALOG_MODELS[0])
   const [selectedHandoff, setSelectedHandoff] = useState<CatalogModel | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  // Floating-nav collapse (AnimatedNavFramer recipe). lastY + yAtCollapse drive
+  // the asymmetric thresholds: any downward scroll past 150px collapses, and it
+  // takes a net 80px climb from the collapse point to re-expand.
+  // ponytail: native scroll listener instead of framer's useScroll — in some
+  // embedded Chromiums ScrollTimeline (which framer prefers when available)
+  // never ticks, so scrollY 'change' events never fire. A passive window
+  // listener is what the rest of this app already trusts.
+  const [navExpanded, setNavExpanded] = useState(true)
+  // The scroll listener mounts once; this ref keeps it reading the live value.
+  const navExpandedRef = useRef(true)
+  navExpandedRef.current = navExpanded
+  const navLastY = useRef(0)
+  const navYAtCollapse = useRef(0)
+  useEffect(() => {
+    const onScroll = () => {
+      const latest = window.scrollY
+      const previous = navLastY.current
+      const expanded = navExpandedRef.current
+      if (expanded && latest > previous && latest > NAV_COLLAPSE_SCROLL) {
+        setNavExpanded(false)
+        navYAtCollapse.current = latest
+      } else if (
+        !expanded &&
+        latest < previous &&
+        navYAtCollapse.current - latest > NAV_EXPAND_SCROLL
+      ) {
+        setNavExpanded(true)
+      }
+      navLastY.current = latest
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+  // Manual collapse. The scroll rule only fires past 150px, so at the top of
+  // the page there's no way to fold the bar — this is that way. Recording
+  // yAtCollapse keeps the 80px scroll-up re-expand working from wherever it
+  // was pressed; at the top there's nothing to scroll up from, so a deliberate
+  // collapse sticks until the pill is clicked. ponytail: not persisted — the
+  // default is "open", per the request.
+  const collapseNav = useCallback(() => {
+    navYAtCollapse.current = window.scrollY
+    setNavExpanded(false)
+  }, [])
   const [appView, setAppView] = useState<AppView>('home')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [activeTab, setActiveTab] = useState<'marketplace' | 'terminal' | 'vault' | 'agents'>('marketplace')
@@ -873,6 +987,18 @@ function App() {
 
   // Docs dim overlay scroll depth (0 → 1 past the "How ENZO works" masthead)
   const [docsDimDepth, setDocsDimDepth] = useState(0)
+
+  // The floating nav's scroll-collapse is desktop-only (below md the bar
+  // carries the hamburger into the mobile menu and must never fold away).
+  const [isMobileWidth, setIsMobileWidth] = useState(
+    () => !window.matchMedia('(min-width: 768px)').matches
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const onChange = () => setIsMobileWidth(!mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
 
   // Homepage atmosphere — first registry entry ('nebula') is the default, so the
   // shader background loads for first-time visitors and whenever the saved
@@ -1321,18 +1447,17 @@ function App() {
           <FilmGrain />
         </>
       ) : isWorkspaceSurface ? (
-        <MarketplaceThemeRenderer
-          backgroundVideoId={mBackgroundVideoId}
-          weather={mWeather}
-          onPreloadRequest={handlePreloadRequest}
-        />
+        <>
+          <MarketplaceThemeRenderer
+            backgroundVideoId={mBackgroundVideoId}
+            weather={mWeather}
+            onPreloadRequest={handlePreloadRequest}
+          />
+          <MusicPlayer />
+        </>
       ) : (
         <div className="fixed inset-0 z-0 bg-[#06070c]" aria-hidden="true" />
       )}
-
-      {/* Unsplash auto-wallpaper layer (unplugged for now to avoid mixing with video themes) */}
-      <AutoWallpaper active={false} />
-
 
       {/* ── Auth / Onboarding overlay views ── */}
       <AnimatePresence>
@@ -1365,7 +1490,30 @@ function App() {
       </AnimatePresence>
 
       {/* ── Floating Liquid Glass Navigation Bar ── */}
-      <nav className="overflow-hidden fixed top-4 left-1/2 -translate-x-1/2 z-40 w-[92%] md:w-[85%] max-w-6xl rounded-full border border-white/10 bg-[#06070c]/60 backdrop-blur-2xl px-6 h-[46px] shadow-[0_8px_32px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.06)] flex items-center justify-between transition-all duration-300 ring-1 ring-white/[0.03]">
+      {/* Scroll-collapse is desktop-only: the phone bar's hamburger is the only
+          way into the mobile menu, so it must never fold away. md:flex motion
+          children pair with this — below md both sections render as before.
+          Centering lives on THIS wrapper, not the motion.nav: framer-motion
+          writes the whole inline transform string, which would otherwise wipe
+          Tailwind's -translate-x-1/2 the moment whileHover scale engages. The
+          wrapper shrink-wraps (w-fit) so the pill stays centered while the
+          nav's own width springs between full bar and pill. Viewport widths
+          replace the old body-percentages (same geometry: the fixed element's
+          containing block was always the viewport). */}
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-40 w-fit">
+      <motion.nav
+        initial={false}
+        animate={navExpanded || isMobileWidth ? 'expanded' : 'collapsed'}
+        variants={navBarVariants}
+        whileHover={!navExpanded && !isMobileWidth ? { scale: 1.06 } : undefined}
+        whileTap={!navExpanded && !isMobileWidth ? { scale: 0.96 } : undefined}
+        onClick={() => {
+          if (!navExpanded && !isMobileWidth) setNavExpanded(true)
+        }}
+        className={`overflow-hidden group w-[92vw] md:w-[85vw] rounded-full border border-white/10 bg-[#06070c]/60 backdrop-blur-2xl px-6 h-[46px] shadow-[0_8px_32px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.06)] flex items-center justify-between transition-shadow duration-300 ring-1 ring-white/[0.03] ${
+          !navExpanded && !isMobileWidth ? 'cursor-pointer' : ''
+        }`}
+      >
         {/* Smoke ambience behind the glass. Left of center so the centered
             links (workspace tabs when logged in; Home/Docs/Pricing when
             logged out) and right-side controls keep a clean dark field.
@@ -1374,7 +1522,10 @@ function App() {
         <div className="relative z-10 w-full flex items-center justify-between">
           <button
             type="button"
-            onClick={() => {
+            onClick={(e) => {
+              // The pill eats clicks to re-expand; the brand beneath keeps its
+              // own behavior when the bar is open.
+              e.stopPropagation()
               if (!isLoggedIn) {
                 setAppView('home')
                 scrollToSection('hero')
@@ -1386,7 +1537,10 @@ function App() {
           </button>
 
           {/* Desktop links (dynamically centered between brand and right controls) */}
-          <div className="hidden min-w-0 flex-1 items-center justify-center gap-1 md:flex">
+          <motion.div
+            variants={navSectionVariants}
+            className="hidden min-w-0 flex-1 items-center justify-center gap-1 md:flex"
+          >
             {isLoggedIn ? (
               <>
                 {(['marketplace', 'terminal', 'agents', 'vault'] as const).map((tab) => (
@@ -1439,7 +1593,7 @@ function App() {
                 </button>
               </>
             )}
-          </div>
+          </motion.div>
 
           {/* Right: Login / Sign out / Theme selector.
               `min-w-0` instead of `shrink-0`: at phone width the eleven-slot theme
@@ -1448,7 +1602,10 @@ function App() {
               the rail's scroll wrapper, so the rail is the only thing that gives
               ground. At md+ nothing overflows, so none of this engages and the
               desktop nav geometry is bit-for-bit what it was. */}
-          <div className="flex min-w-0 items-center gap-2">
+          <motion.div
+            variants={navSectionVariants}
+            className="flex min-w-0 items-center gap-2"
+          >
             {isLoggedIn && isWorkspaceSurface && (
               <HeaderThemeSelector
                 activeId={mBackgroundVideoId}
@@ -1491,6 +1648,18 @@ function App() {
                 />
               </div>
             )}
+            {/* Manual collapse — the only way to fold the bar above the 150px
+                scroll threshold. Desktop-only, mirroring the scroll rule: the
+                phone bar carries the hamburger and never collapses. */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); collapseNav() }}
+              aria-label="Collapse navigation bar"
+              title="Collapse navigation bar"
+              className="hidden shrink-0 items-center justify-center rounded-full p-1.5 text-white/40 transition-all hover:bg-white/5 hover:text-white md:flex"
+            >
+              <ChevronsRightLeft size={14} />
+            </button>
             {/* Mobile hamburger */}
             <button
               className="flex shrink-0 items-center justify-center text-white/80 transition-colors hover:text-white md:hidden"
@@ -1499,9 +1668,22 @@ function App() {
             >
               {menuOpen ? <X size={22} /> : <Menu size={22} />}
             </button>
-          </div>
+          </motion.div>
         </div>
-      </nav>
+
+        {/* Collapsed-pill affordance (AnimatedNavFramer's menu glyph): pops in
+            beside the brand when the bar folds, signaling the pill re-opens on
+            click. Desktop-only — the phone bar never collapses. */}
+        <div className="pointer-events-none absolute inset-0 hidden items-center justify-end pr-4 md:flex">
+          <motion.div
+            variants={navMenuGlyphVariants}
+            animate={navExpanded || isMobileWidth ? 'expanded' : 'collapsed'}
+          >
+            <Menu className="h-5 w-5 text-white/70" />
+          </motion.div>
+        </div>
+      </motion.nav>
+      </div>
       <AnimatePresence>
         {menuOpen && (
           <motion.div
@@ -2018,6 +2200,14 @@ function CatalogAdvisor({
 
 // ─── Sub-Component: MarketplaceSection ───────────────────────────────────────────
 
+// Catalog header controls. One class string for all of them, so a new provider
+// nudge can't reintroduce the cyan/violet/orange drift the monochrome rule
+// rules out — coral is the only accent, and only on the "you need a key" pills.
+const CTA_PILL =
+  'liquid-glass rounded-full px-4 py-2 font-mono-display text-[10px] uppercase tracking-widest text-white/70 hover:text-white hover:bg-white/5 transition-all flex items-center gap-2 whitespace-nowrap'
+const CTA_PILL_NUDGE =
+  'rounded-full px-4 py-2 font-mono-display text-[10px] uppercase tracking-widest text-[#f0968a] border border-[#f0968a]/35 hover:border-[#f0968a]/70 hover:bg-[#f0968a]/[0.07] transition-all whitespace-nowrap'
+
 function MarketplaceSection({
   catalog,
   onSelectModel,
@@ -2049,15 +2239,6 @@ function MarketplaceSection({
   const [onlineOnly, setOnlineOnly] = useState(false)
   const [sortBy, setSortBy] = useState<'name' | 'ctx' | 'free' | 'rec'>('free')
   const [page, setPage] = useState(1)
-
-  // Auto Wallpaper (Unsplash) — persisted under enzo.wallpaper.* for AutoWallpaper
-  const [wpAuto, setWpAuto] = useState(() => localStorage.getItem('enzo.wallpaper.auto') === 'true')
-  const [wpQuery, setWpQuery] = useState(() => localStorage.getItem('enzo.wallpaper.query') || 'nature landscape 4k')
-  const [wpInterval, setWpInterval] = useState(() => localStorage.getItem('enzo.wallpaper.interval') || 'daily')
-
-  // First-run: a new user has never seen the cache key. Seed a wallpaper so the
-  // layer paints before the periodic refresh resolves, but do NOT mark it fresh
-  // (no `enzo.wallpaper.last` write) so the real fetch still fires immediately.
 
   // Set of model ids/names reported live by the backend, refreshed every 5 min
   // (same cadence as the per-card ping). Powers the "Online Only" filter.
@@ -2166,90 +2347,148 @@ function MarketplaceSection({
     return filtered.slice((page - 1) * modelsPerPage, page * modelsPerPage)
   }, [filtered, page])
 
+  // GSAP entrance for the card grid: re-runs whenever the visible set changes
+  // (page flip, search, filter). useLayoutEffect so the `from` state lands
+  // before paint — useEffect would flash the cards at full opacity first.
+  const gridRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const tween = staggerIn(gridRef.current?.querySelectorAll('[data-model-card]') ?? [])
+    return () => {
+      tween?.kill()
+    }
+  }, [paginatedModels])
+
   return (
     <div className="space-y-10">
       {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between items-start text-left">
-        <div>
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between text-left">
+        <div className="min-w-0">
           <div className="font-mono-display text-[9px] uppercase tracking-[0.25em] text-white/40 mb-1">
             // 02 · Catalog
           </div>
-          <h2 className="font-garamond text-3xl md:text-5xl font-normal text-white">
+          {/* Pointer position is written straight to the element's style, not to
+              React state — a setState per pointermove would re-render the whole
+              catalog section on every mouse tick. */}
+          <h2
+            className="w-fit font-garamond text-3xl md:text-5xl font-normal text-gradient-mono"
+            onPointerMove={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              e.currentTarget.style.setProperty('--gx', `${e.clientX - r.left}px`)
+              e.currentTarget.style.setProperty('--gy', `${e.clientY - r.top}px`)
+            }}
+            onPointerLeave={(e) => {
+              e.currentTarget.style.removeProperty('--gx')
+              e.currentTarget.style.removeProperty('--gy')
+            }}
+          >
             Unified Catalog.
           </h2>
           <p className="font-light text-xs text-white/50 leading-relaxed mt-2 max-w-xl">
             Explore dynamic model routing across OpenRouter, Groq, Pollinations and Hugging Face. Select architectures directly.
           </p>
+
+          {/* Counts, promoted out of the 9px line they used to hide in at the far
+              right of the control row. Same three numbers, read as the headline
+              stat under the title instead of as a caption. */}
+          <div className="mt-5 flex items-center gap-5 font-mono-display">
+            <div>
+              <div className="text-2xl leading-none text-white">
+                {filtered.length.toString().padStart(2, '0')}
+              </div>
+              <div className="mt-1.5 text-[9px] uppercase tracking-[0.2em] text-white/40">Shown</div>
+            </div>
+            <div className="h-8 w-px bg-white/10" />
+            <div>
+              <div className="text-2xl leading-none text-white/70">{catalog.length}</div>
+              <div className="mt-1.5 text-[9px] uppercase tracking-[0.2em] text-white/40">Models</div>
+            </div>
+            <div className="h-8 w-px bg-white/10" />
+            <div>
+              <div className="text-2xl leading-none text-white/70">{providers.length}</div>
+              <div className="mt-1.5 text-[9px] uppercase tracking-[0.2em] text-white/40">Providers</div>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col md:flex-row items-center gap-3">
-          <button
-            onClick={async () => {
-              if (refreshing || !onRefreshCatalog) return
-              setRefreshing(true)
-              try {
-                await onRefreshCatalog()
-              } finally {
-                setRefreshing(false)
-              }
-            }}
-            disabled={refreshing}
-            title="Clear cache & fetch fresh models from all providers"
-            className="liquid-glass rounded-full px-5 py-2 font-mono-display text-[10px] uppercase tracking-widest text-white hover:bg-white/5 transition-all flex items-center gap-2 disabled:opacity-60 disabled:cursor-wait"
-          >
-            <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
-            {refreshing ? 'Syncing…' : 'Refresh'}
-          </button>
-          <button
-            onClick={onGoToTerminal}
-            className="liquid-glass rounded-full px-5 py-2 font-mono-display text-[10px] uppercase tracking-widest text-white hover:bg-white/5 transition-all"
-          >
-            Terminal →
-          </button>
-          {!(keyVault.getItem('enzo.keys.huggingface') || keyVault.getItem('enzo-huggingface-key')) && (
-            <button
-              onClick={onGoToVault}
-              className="backdrop-blur-lg bg-gradient-to-tr from-transparent via-[rgba(121,121,121,0.16)] to-transparent rounded-md py-2 px-6 duration-700 font-mono-display text-[10px] uppercase tracking-widest text-white border border-cyan-400/40 shadow-[0_0_10px_rgba(34,211,238,0.25)] hover:border-cyan-300 hover:shadow-[0_0_16px_rgba(34,211,238,0.5)] transition-all animate-pulse"
-            >
-              Setup HuggingFace ↗
-            </button>
-          )}
-          {!keyVault.getItem('enzo.keys.llm7') && (
-            <button
-              onClick={onGoToVault}
-              className="liquid-glass rounded-full px-5 py-2 font-mono-display text-[10px] uppercase tracking-widest text-violet-300 hover:bg-white/5 transition-all"
-              title="LLM7 models require a free token from dash.llm7.io — there is no anonymous tier."
-            >
-              Add LLM7 Key ↗
-            </button>
-          )}
-          {!keyVault.getItem('enzo.keys.google') && !keyVault.getItem('enzo.keys.gemini') && (
-            <button
-              onClick={onGoToVault}
-              className="liquid-glass rounded-full px-5 py-2 font-mono-display text-[10px] uppercase tracking-widest text-orange-300 hover:bg-white/5 transition-all"
-              title="Google Gemini models require a free key from aistudio.google.com — no anonymous tier."
-            >
-              Add Google Key ↗
-            </button>
-          )}
-          {!keyVault.getItem('enzo.keys.puter') && (
-            <button
-              onClick={onGoToVault}
-              className="backdrop-blur-lg bg-gradient-to-tr from-transparent via-[rgba(121,121,121,0.16)] to-transparent rounded-md py-2 px-6 duration-700 font-mono-display text-[10px] uppercase tracking-widest text-white border border-cyan-400/40 shadow-[0_0_10px_rgba(34,211,238,0.25)] hover:border-cyan-300 hover:shadow-[0_0_16px_rgba(34,211,238,0.5)] transition-all"
-              title="Puter models need an auth token from puter.com/dashboard (user-pays free monthly credits)."
-            >
-              Add Puter Token ↗
-            </button>
-          )}
-          <input
-            type="text"
-            placeholder="Search catalog models…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            data-tour-step="marketplace-search"
-            className="rounded-full bg-white/5 border border-white/10 px-4 py-2 font-mono-display text-xs text-white placeholder:text-white/20 focus:border-white/30 focus:outline-none w-64 shadow-inner"
-          />
-          <div className="font-mono-display text-[9px] text-white/40">
-            {filtered.length.toString().padStart(2, '0')} / {catalog.length} active
+
+        <div className="flex items-start gap-4">
+          {/* Ambient weather chip — pinned to the header's right corner, level
+              with the search field. Hidden below md, where the controls stack
+              already fills the width. */}
+          <div className="hidden md:flex">
+            <WeatherWidget />
+          </div>
+
+          {/* Controls stack: search on its own line above the pills. One wrapping
+              row of seven items put the search box in a different place on every
+              viewport width. */}
+          <div className="flex flex-col items-stretch gap-3 lg:items-end">
+            <input
+              type="text"
+              placeholder="Search catalog models…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              data-tour-step="marketplace-search"
+              className="w-full lg:w-72 rounded-full bg-white/5 border border-white/10 px-4 py-2.5 font-mono-display text-xs text-white placeholder:text-white/25 focus:border-white/30 focus:outline-none shadow-inner"
+            />
+
+            <div className="flex flex-wrap gap-2 lg:justify-end">
+              <button
+                onClick={async () => {
+                  if (refreshing || !onRefreshCatalog) return
+                  setRefreshing(true)
+                  try {
+                    await onRefreshCatalog()
+                  } finally {
+                    setRefreshing(false)
+                  }
+                }}
+                disabled={refreshing}
+                title="Clear cache & fetch fresh models from all providers"
+                className={`${CTA_PILL} disabled:opacity-60 disabled:cursor-wait`}
+              >
+                <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+                {refreshing ? 'Syncing…' : 'Refresh'}
+              </button>
+              <button onClick={onGoToTerminal} className={CTA_PILL}>
+                Terminal →
+              </button>
+              {!(keyVault.getItem('enzo.keys.huggingface') || keyVault.getItem('enzo-huggingface-key')) && (
+                <button
+                  onClick={onGoToVault}
+                  className={CTA_PILL_NUDGE}
+                  title="HuggingFace models need a free token from huggingface.co/settings/tokens."
+                >
+                  HuggingFace ↗
+                </button>
+              )}
+              {!keyVault.getItem('enzo.keys.llm7') && (
+                <button
+                  onClick={onGoToVault}
+                  className={CTA_PILL_NUDGE}
+                  title="LLM7 models require a free token from dash.llm7.io — there is no anonymous tier."
+                >
+                  LLM7 Key ↗
+                </button>
+              )}
+              {!keyVault.getItem('enzo.keys.google') && !keyVault.getItem('enzo.keys.gemini') && (
+                <button
+                  onClick={onGoToVault}
+                  className={CTA_PILL_NUDGE}
+                  title="Google Gemini models require a free key from aistudio.google.com — no anonymous tier."
+                >
+                  Google Key ↗
+                </button>
+              )}
+              {!keyVault.getItem('enzo.keys.puter') && (
+                <button
+                  onClick={onGoToVault}
+                  className={CTA_PILL_NUDGE}
+                  title="Puter models need an auth token from puter.com/dashboard (user-pays free monthly credits)."
+                >
+                  Puter Token ↗
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -2360,61 +2599,6 @@ function MarketplaceSection({
               </select>
             </div>
 
-            {/* Auto Wallpaper (Unsplash) settings */}
-            <div className="border-t border-white/5 pt-4 space-y-3 text-left">
-              <div className="font-mono-display text-[9px] uppercase tracking-widest text-white/50">
-                Auto Wallpaper (Unsplash)
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  const next = !wpAuto
-                  setWpAuto(next)
-                  localStorage.setItem('enzo.wallpaper.auto', next ? 'true' : 'false')
-                  emitWallpaperChanged()
-                }}
-                className={`rounded-full px-3 py-1 font-mono-display text-[9px] uppercase tracking-wider transition-all border ${
-                  wpAuto
-                    ? 'bg-white border-white text-black shadow-inner font-semibold'
-                    : 'border-white/10 text-white/60 hover:border-white/20 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                {wpAuto ? 'Wallpaper: On' : 'Wallpaper: Off'}
-              </button>
-              <div>
-                <label className="font-mono-display text-[8px] uppercase tracking-wider text-white/40 block mb-1">
-                  Query
-                </label>
-                <input
-                  type="text"
-                  value={wpQuery}
-                  onChange={(e) => {
-                    setWpQuery(e.target.value)
-                    localStorage.setItem('enzo.wallpaper.query', e.target.value)
-                  }}
-                  placeholder="nature landscape 4k"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 font-mono-display text-[10px] text-white focus:outline-none focus:border-white/20 placeholder:text-white/25"
-                />
-              </div>
-              <div>
-                <label className="font-mono-display text-[8px] uppercase tracking-wider text-white/40 block mb-1">
-                  Refresh
-                </label>
-                <select
-                  value={wpInterval}
-                  onChange={(e) => {
-                    setWpInterval(e.target.value)
-                    localStorage.setItem('enzo.wallpaper.interval', e.target.value)
-                  }}
-                  className="w-full bg-[#0d0d18]/60 border border-white/10 rounded-lg px-2.5 py-1.5 font-mono-display text-[10px] text-white focus:outline-none focus:border-white/20"
-                >
-                  <option value="visit" className="bg-[#0b0b0b]">Every visit</option>
-                  <option value="hourly" className="bg-[#0b0b0b]">Hourly</option>
-                  <option value="daily" className="bg-[#0b0b0b]">Daily</option>
-                </select>
-              </div>
-            </div>
-
             {/* Environment Controller */}
             <div className="border-t border-white/5 pt-4 space-y-4 text-left">
               <div className="font-mono-display text-[9px] uppercase tracking-widest text-white/30 select-none">
@@ -2442,18 +2626,11 @@ function MarketplaceSection({
               )}
             </div>
 
-            {/* Ambient weather — IP-located side widget; expands on hover only
-                and stays inside the sidebar column, so it never overlaps the
-                catalog grid. Hidden below lg where the sidebar stacks on top. */}
-            <div className="hidden lg:flex justify-center border-t border-white/5 pt-5">
-              <WeatherWidget />
-            </div>
-
           </div>
         </div>
 
         {/* Model cards grid */}
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div ref={gridRef} className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {paginatedModels.map((m) => {
             const isActive = activeModelId === m.id
             return (
@@ -2529,6 +2706,281 @@ function FilterChip({
   )
 }
 
+/** Which provider credential this model needs, and whether it's present. */
+function providerKeyStatus(model: CatalogModel): { name: string; hasKey: boolean } | null {
+  const prov = (model.provider || '').toLowerCase()
+  const id = model.id.toLowerCase()
+  const has = (...keys: string[]) => keys.some((k) => !!keyVault.getItem(k))
+
+  if (prov === 'huggingface' || prov === 'hf' || id.startsWith('hf/'))
+    return { name: 'Hugging Face', hasKey: has('enzo.keys.huggingface', 'enzo-huggingface-key') }
+  if (prov === 'nvidia' || id.startsWith('nvidia/'))
+    return { name: 'NVIDIA NIM', hasKey: has('enzo.keys.nvidia', 'enzo-nvidia-key') }
+  if (prov === 'openrouter' || id.startsWith('openrouter/'))
+    return { name: 'OpenRouter', hasKey: has('enzo.keys.openrouter', 'enzo-openrouter-key') }
+  if (prov === 'llm7' || prov === 'llm7.io' || id.startsWith('llm7/'))
+    return { name: 'LLM7', hasKey: has('enzo.keys.llm7') }
+  if (prov === 'google' || prov === 'gemini' || id.startsWith('google/'))
+    return { name: 'Google', hasKey: has('enzo.keys.google') }
+  if (prov === 'puter' || id.startsWith('puter/')) return { name: 'Puter', hasKey: has('enzo.keys.puter') }
+  if (prov === 'cloudflare' || id.startsWith('cloudflare/'))
+    return { name: 'Cloudflare', hasKey: has('enzo.keys.cloudflare') }
+  return null
+}
+
+/** One aligned label/value line in the hover panel's spec grid. */
+function TelemetryRow({
+  label,
+  value,
+  tone = 'text-white/75',
+}: {
+  label: string
+  value: string
+  tone?: string
+}) {
+  return (
+    <>
+      <dt className="pt-[2px] font-mono-display text-[8px] uppercase tracking-[0.16em] text-white/30">
+        {label}
+      </dt>
+      <dd className={`font-sans text-[11px] leading-[1.5] ${tone}`}>{value}</dd>
+    </>
+  )
+}
+
+/**
+ * The expanded view behind the hover panel's "Expand" button.
+ *
+ * Portalled to <body>: the card carries a GSAP transform, which would
+ * otherwise become the containing block for a `fixed` child and trap the
+ * dialog inside the card.
+ */
+function ModelInfoDialog({
+  model,
+  telemetry,
+  keyStatus,
+  onClose,
+}: {
+  model: CatalogModel
+  telemetry: { speed: string; strengths: string; weaknesses: string }
+  keyStatus: { name: string; hasKey: boolean } | null
+  onClose: () => void
+}) {
+  const [info, setInfo] = useState<ModelInfo | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetchModelInfo(model.id, model.name)
+      .then((data) => !cancelled && setInfo(data))
+      .catch(() => !cancelled && setInfo({}))
+      .finally(() => !cancelled && setLoading(false))
+    return () => {
+      cancelled = true
+    }
+  }, [model.id, model.name])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  // Most catalog blurbs are routing boilerplate, not description: 129
+  // HuggingFace models say "HuggingFace serverless model (x). Routable via HF
+  // Serverless Inference.", 63 NVIDIA NIMs say "NVIDIA NIM hosted model: x".
+  // They describe how the model is reached, never what it is, so they read as
+  // filler where real prose belongs. Drop them and prefer OpenRouter's.
+  const blurb = ROUTING_BLURB.test(model.description ?? '') ? undefined : model.description
+  const summary = (info?.summary?.length ?? 0) > (blurb?.length ?? 0) ? info?.summary : blurb
+
+  const stats = [
+    info?.downloads !== undefined && { label: 'Downloads', value: compactNumber(info.downloads) },
+    info?.likes !== undefined && { label: 'Likes', value: compactNumber(info.likes) },
+    info?.intelligence !== undefined && { label: 'Intelligence', value: `${info.intelligence} AA` },
+    info?.coding !== undefined && { label: 'Coding', value: `${info.coding} AA` },
+    // HuggingFace writes a literal "other" for anything non-standard, which
+    // fills a cell without telling you anything — the repo link covers it.
+    info?.license && info.license !== 'other' && { label: 'Licence', value: info.license.toUpperCase() },
+    info?.pipeline && { label: 'Task', value: info.pipeline.replace(/-/g, ' ') },
+    info?.knowledgeCutoff && { label: 'Knowledge to', value: info.knowledgeCutoff },
+    info?.modality && { label: 'Modality', value: info.modality.replace('->', ' → ') },
+    info?.tokenizer && { label: 'Tokenizer', value: info.tokenizer },
+    info?.createdAt && { label: 'Published', value: info.createdAt.slice(0, 10) },
+    model.context_length > 0 && {
+      label: 'Context',
+      value: `${compactNumber(model.context_length)} tokens`,
+    },
+    // Catalog facts, so the grid still carries the panel for the community
+    // and microservice models that have no public record anywhere.
+    (model.max_output || info?.maxCompletion) && {
+      label: 'Max output',
+      value: `${compactNumber(model.max_output || info?.maxCompletion || 0)} tokens`,
+    },
+    { label: 'Moderated', value: model.moderated ? 'Yes' : 'No' },
+    model.added_date && { label: 'Listed', value: model.added_date.slice(0, 10) },
+  ].filter(Boolean) as { label: string; value: string }[]
+
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+      // ponytail: will-change-transform is load-bearing, not a perf tweak. The
+      // advisor pill stacks below at z-30 but paints its own composited layer
+      // (backdrop-filter on .liquid-glass-panel, plus backdrop-filter +
+      // mix-blend-mode on .color-orb::after) and punches through this backdrop.
+      // Promoting the backdrop to its own layer puts it back on top. Tailwind's
+      // transform-gpu is not enough — Chrome flattens translateZ(0) here.
+      className="fixed inset-0 z-[200] grid place-items-center bg-black/80 p-6 backdrop-blur-md will-change-transform"
+    >
+      <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`About ${model.name}`}
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 12 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+        onClick={(e) => e.stopPropagation()}
+        className="max-h-[82vh] w-full max-w-xl overflow-y-auto rounded-3xl border border-white/10 bg-[#08090b]/95 shadow-[0_30px_90px_rgba(0,0,0,0.8)] backdrop-blur-2xl"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-white/[0.07] px-6 py-5">
+          <div className="min-w-0">
+            <div className="font-mono-display text-[9px] uppercase tracking-[0.2em] text-white/35">
+              Model dossier
+            </div>
+            <h2 className="mt-1.5 truncate font-garamond text-2xl font-normal text-white">{model.name}</h2>
+            <div className="mt-1.5 flex items-center gap-1.5 font-mono-display text-[9px] uppercase tracking-[0.16em] text-white/40">
+              <span>{model.provider}</span>
+              <span className="text-white/15">/</span>
+              <span>{model.free ? 'Free' : model.pricing_prompt || 'Paid'}</span>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="shrink-0 rounded-full border border-white/10 px-2.5 py-1 font-mono-display text-[11px] text-white/50 transition-colors hover:border-white/25 hover:text-white"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-5 px-6 py-5">
+          {summary && (
+            <p className="font-sans text-[13px] leading-[1.7] text-white/60">{summary}</p>
+          )}
+
+          {loading && (
+            <div className="font-mono-display text-[9px] uppercase tracking-[0.18em] text-white/30">
+              Fetching public data…
+            </div>
+          )}
+
+          {stats.length > 0 && (
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 border-t border-white/[0.07] pt-5 sm:grid-cols-3">
+              {stats.map((s) => (
+                <div key={s.label}>
+                  <dt className="font-mono-display text-[8px] uppercase tracking-[0.16em] text-white/30">
+                    {s.label}
+                  </dt>
+                  <dd className="mt-1 font-sans text-[13px] capitalize text-white/85">{s.value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+
+          {info?.abstract && (
+            <div className="border-t border-white/[0.07] pt-5">
+              <div className="font-mono-display text-[8px] uppercase tracking-[0.16em] text-white/30">
+                Background
+              </div>
+              <p className="mt-2 font-sans text-[13px] leading-[1.7] text-white/60">{info.abstract}</p>
+              {info.abstractUrl && (
+                <a
+                  href={info.abstractUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-block font-mono-display text-[9px] uppercase tracking-[0.16em] text-white/35 underline-offset-4 transition-colors hover:text-[#f0968a] hover:underline"
+                >
+                  {info.abstractSource || 'Source'} ↗
+                </a>
+              )}
+            </div>
+          )}
+
+          {info?.tags && info.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 border-t border-white/[0.07] pt-5">
+              {info.tags.map((t) => (
+                <span
+                  key={t}
+                  className="rounded-full border border-white/[0.09] px-2.5 py-1 font-mono-display text-[8px] uppercase tracking-[0.1em] text-white/45"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <dl className="grid grid-cols-[76px_1fr] gap-x-4 gap-y-2.5 border-t border-white/[0.07] pt-5">
+            {keyStatus && (
+              <TelemetryRow
+                label="Credential"
+                value={`${keyStatus.name} — ${keyStatus.hasKey ? 'key active' : 'key missing'}`}
+                tone={keyStatus.hasKey ? 'text-white/75' : 'text-[#f0968a]'}
+              />
+            )}
+            {model.health && (
+              <TelemetryRow
+                label="Health"
+                value={`${modelHealthState(model.health)} · checked ${timeAgo(model.health.checkedAt)}`}
+                tone={model.health.status === 'offline' ? 'text-[#f0968a]' : 'text-white/75'}
+              />
+            )}
+            <TelemetryRow label="Speed" value={telemetry.speed} />
+            <TelemetryRow label="Strong at" value={telemetry.strengths} />
+            <TelemetryRow label="Weak at" value={telemetry.weaknesses} tone="text-white/45" />
+          </dl>
+
+          {(info?.repo || info?.orId) && (
+            <div className="flex flex-col gap-2 border-t border-white/[0.07] pt-5">
+              {info.repo && (
+                <a
+                  href={`https://huggingface.co/${info.repo}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block truncate font-mono-display text-[9px] uppercase tracking-[0.16em] text-white/35 transition-colors hover:text-[#f0968a]"
+                >
+                  huggingface.co/{info.repo} ↗
+                </a>
+              )}
+              {info.orId && (
+                <a
+                  href={`https://openrouter.ai/${info.orId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block truncate font-mono-display text-[9px] uppercase tracking-[0.16em] text-white/35 transition-colors hover:text-[#f0968a]"
+                >
+                  openrouter.ai/{info.orId} ↗
+                </a>
+              )}
+            </div>
+          )}
+
+          {!loading && !info?.repo && !info?.abstract && !info?.orId && (
+            <div className="border-t border-white/[0.07] pt-5 font-mono-display text-[9px] uppercase tracking-[0.16em] text-white/30">
+              No external record — catalog data only
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>,
+    document.body,
+  )
+}
+
 function InteractiveModelCard({
   model,
   isActive,
@@ -2540,11 +2992,6 @@ function InteractiveModelCard({
   onSelect: () => void
   tourStep?: string
 }) {
-  const mx = useMotionValue(0)
-  const my = useMotionValue(0)
-  const rx = useSpring(useTransform(my, [-0.5, 0.5], [8, -8]), { stiffness: 120, damping: 12 })
-  const ry = useSpring(useTransform(mx, [-0.5, 0.5], [-10, 10]), { stiffness: 120, damping: 12 })
-
   // Model activity ping state
   const [isOnline, setIsOnline] = useState<boolean | null>(null)
   const [isPinging, setIsPinging] = useState(false)
@@ -2580,48 +3027,13 @@ function InteractiveModelCard({
     }
   }, [model.id, model.name])
 
-  const handle = (e: React.MouseEvent<HTMLDivElement>) => {
-    const r = e.currentTarget.getBoundingClientRect()
-    mx.set((e.clientX - r.left) / r.width - 0.5)
-    my.set((e.clientY - r.top) / r.height - 0.5)
-  }
-
-  const reset = () => {
-    mx.set(0)
-    my.set(0)
-  }
-
   const [isHovered, setIsHovered] = useState(false)
-
-  const providerColor: Record<CatalogModel['provider'], string> = {
-    Groq: 'text-cyan-400',
-    OpenRouter: 'text-pink-400',
-    Pollinations: 'text-yellow-400',
-    HuggingFace: 'text-sky-400',
-    NVIDIA: 'text-green-400',
-    LLM7: 'text-violet-400',
-    Google: 'text-orange-400',
-    Puter: 'text-emerald-400',
-    Cloudflare: 'text-indigo-400',
-  }
+  const [expanded, setExpanded] = useState(false)
 
   const friendlyType: Record<string, string> = {
     text: 'Text',
     multimodal: 'Multimodal',
     'image-gen': 'Image Gen',
-  }
-
-  const TAG_COLORS: Record<string, string> = {
-    'General Chat': 'bg-white/[0.04] text-white/70 border-white/10',
-    Reasoning: 'bg-violet-500/15 text-violet-300 border-violet-500/25',
-    Coding: 'bg-sky-500/15 text-sky-300 border-sky-500/25',
-    Vision: 'bg-green-500/15 text-green-300 border-green-500/25',
-    'Image Gen': 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/25',
-    Creative: 'bg-rose-500/15 text-rose-300 border-rose-500/25',
-    Fast: 'bg-amber-500/15 text-amber-300 border-amber-500/25',
-    Uncensored: 'bg-red-500/15 text-red-300 border-red-500/25',
-    New: 'bg-yellow-400/15 text-yellow-300 border-yellow-400/25',
-    Multilingual: 'bg-teal-500/15 text-teal-300 border-teal-500/25',
   }
 
   const getCardTelemetry = (m: CatalogModel) => {
@@ -2661,199 +3073,110 @@ function InteractiveModelCard({
     return { speed, strengths, weaknesses }
   }
 
+  const hasProbe = !!model.health && (model.health.status === 'online' || model.health.status === 'degraded')
+  const telemetry = getCardTelemetry(model)
+  const keyStatus = providerKeyStatus(model)
+
   return (
-    <motion.div
-      onMouseMove={handle}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => {
-        reset()
-        setIsHovered(false)
-      }}
-      style={{ rotateX: rx, rotateY: ry, transformStyle: 'preserve-3d' }}
-      data-tour-step={tourStep}
-      className={`group relative rounded-2xl p-5 border transition-all backdrop-blur-md ${
-        isActive
-          ? 'bg-white/[0.08] border-white/30 shadow-lg'
-          : 'bg-black/[0.06] border-white/5 hover:border-white/15'
-      }`}
+    <ModelCard
+      name={model.name}
+      description={model.description}
+      provider={model.provider}
+      type={friendlyType[model.type] || model.type}
+      context={model.context_length > 0 ? `${(model.context_length / 1000).toFixed(0)}K ctx` : 'No ctx'}
+      price={model.free ? 'Free' : model.pricing_prompt}
+      tags={(model.tags || []).filter((t) => t !== 'Puter' && t !== 'Free' && t !== 'Cloudflare')}
+      status={isPinging ? 'checking' : isOnline ? 'online' : 'offline'}
+      latency={hasProbe ? formatLatency(model.health!.latencyMs) : undefined}
+      statusTitle={
+        model.health ? `live ${modelHealthState(model.health)} · checked ${timeAgo(model.health.checkedAt)}` : undefined
+      }
+      active={isActive}
+      tourStep={tourStep}
+      onSelect={onSelect}
+      onEnter={() => setIsHovered(true)}
+      onLeave={() => setIsHovered(false)}
     >
-      {/* Interactive Telemetry Card Hover Tooltip */}
-      <AnimatePresence>
-        {isHovered && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 6 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 6 }}
-            transition={{ duration: 0.15, ease: 'easeOut' }}
-            className="absolute bottom-full left-0 mb-3 w-[290px] bg-[#0c0d14]/95 border border-white/20 rounded-xl p-4 shadow-[0_20px_50px_rgba(0,0,0,0.9)] backdrop-blur-2xl text-xs space-y-3 z-50 select-none text-left pointer-events-none"
-          >
-            <div>
-              <div className="text-[9px] uppercase tracking-widest text-white/40">Model Telemetry</div>
-              <div className="text-sm font-semibold text-white mt-0.5 truncate">{model.name}</div>
-              <div className="text-[10px] text-white/50 mt-0.5">{model.provider} · {model.free ? 'FREE' : 'PAID'}</div>
-            </div>
-
-            {/* Provider Key Setup / Credentials status */}
-            {(() => {
-              const prov = (model.provider || '').toLowerCase()
-              const isHf = prov === 'huggingface' || prov === 'hf' || model.id.startsWith('hf/')
-              const isNvidia = prov === 'nvidia' || model.id.startsWith('nvidia/')
-              const isOr = prov === 'openrouter' || model.id.startsWith('openrouter/')
-              const isLlm7 = prov === 'llm7' || prov === 'llm7.io' || model.id.startsWith('llm7/')
-              const isGoogle = prov === 'google' || prov === 'gemini' || model.id.startsWith('google/')
-              const isPuter = prov === 'puter' || model.id.startsWith('puter/')
-              const isCloudflare = prov === 'cloudflare' || model.id.startsWith('cloudflare/')
-
-              let keyStatus: { hasKey: boolean; name: string; isOptional?: boolean } | null = null
-              if (isHf) {
-                const hasKey = !!(keyVault.getItem('enzo.keys.huggingface') || keyVault.getItem('enzo-huggingface-key'))
-                keyStatus = { hasKey, name: 'Hugging Face' }
-              } else if (isNvidia) {
-                const hasKey = !!(keyVault.getItem('enzo.keys.nvidia') || keyVault.getItem('enzo-nvidia-key'))
-                keyStatus = { hasKey, name: 'NVIDIA NIM' }
-              } else if (isOr) {
-                const hasKey = !!(keyVault.getItem('enzo.keys.openrouter') || keyVault.getItem('enzo-openrouter-key'))
-                keyStatus = { hasKey, name: 'OpenRouter' }
-              } else if (isLlm7) {
-                const hasKey = !!keyVault.getItem('enzo.keys.llm7')
-                keyStatus = { hasKey, name: 'LLM7' }
-              } else if (isGoogle) {
-                const hasKey = !!keyVault.getItem('enzo.keys.google')
-                keyStatus = { hasKey, name: 'Google' }
-              } else if (isPuter) {
-                const hasKey = !!keyVault.getItem('enzo.keys.puter')
-                keyStatus = { hasKey, name: 'Puter' }
-              } else if (isCloudflare) {
-                const hasKey = !!keyVault.getItem('enzo.keys.cloudflare')
-                keyStatus = { hasKey, name: 'Cloudflare' }
-              }
-
-              if (!keyStatus) return null
-
-              return (
-                <div className={`p-1.5 rounded border text-[9px] font-mono ${
-                  keyStatus.hasKey
-                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
-                    : keyStatus.isOptional
-                      ? 'bg-white/5 border-white/10 text-white/50'
-                      : 'bg-amber-500/10 border-amber-500/20 text-amber-200'
-                }`}>
-                  <span>{keyStatus.name}: {keyStatus.hasKey ? '✓ Active' : keyStatus.isOptional ? '⚠️ Optional (anonymous free tier)' : '⚠️ Missing Key'}</span>
+        {/* Spec panel on hover. Same monochrome surface as the card itself —
+            one accent (coral) and only ever for "you're missing a key".
+            The pb-3 on the wrapper is a hover bridge, not decoration: a margin
+            would be dead space and the panel would close as the cursor crossed
+            it on the way to Expand. */}
+        <AnimatePresence>
+          {isHovered && (
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              transition={{ duration: 0.15, ease: 'easeOut' }}
+              className="absolute bottom-full left-0 z-50 w-[272px] pb-3"
+            >
+              <div className="select-none rounded-2xl border border-white/10 bg-[#08090b]/95 text-left shadow-[0_24px_60px_rgba(0,0,0,0.75)] backdrop-blur-2xl">
+                <div className="px-3.5 py-3">
+                  <div className="truncate font-sans text-[13px] font-semibold leading-snug text-white/95">
+                    {model.name}
+                  </div>
+                  <div className="mt-1 flex items-center gap-1.5 font-mono-display text-[9px] uppercase tracking-[0.16em] text-white/40">
+                    <span>{model.provider}</span>
+                    <span className="text-white/15">/</span>
+                    <span>{model.free ? 'Free' : 'Paid'}</span>
+                  </div>
                 </div>
-              )
-            })()}
 
-            <div className="space-y-2 pt-2 border-t border-white/[0.06] text-[10px]">
-              {model.health && (
-                <div>
-                  <span className="text-[8px] uppercase tracking-wider text-white/30 block">Health</span>
-                  <span className={`font-medium ${model.health.status === 'online' ? 'text-emerald-400' : model.health.status === 'degraded' ? 'text-amber-400' : model.health.status === 'offline' ? 'text-red-400' : 'text-white/50'}`}>
-                    {modelHealthState(model.health)} · checked {timeAgo(model.health.checkedAt)}
-                  </span>
-                </div>
-              )}
-              <div>
-                <span className="text-[8px] uppercase tracking-wider text-white/30 block">Latency / Speed</span>
-                <span className="text-white/80 font-medium">
-                  {model.health && (model.health.status === 'online' || model.health.status === 'degraded')
-                    ? `Measured ${formatLatency(model.health.latencyMs)} (real probe)`
-                    : getCardTelemetry(model).speed}
-                </span>
+                {keyStatus && (
+                  <div className="flex items-center gap-2 border-t border-white/[0.07] px-3.5 py-2 font-mono-display text-[9px] uppercase tracking-[0.14em]">
+                    <span
+                      className={`h-1 w-1 shrink-0 rounded-full ${
+                        keyStatus.hasKey ? 'bg-white/60' : 'bg-[#f0968a]'
+                      }`}
+                    />
+                    <span className="text-white/40">{keyStatus.name}</span>
+                    <span className={`ml-auto ${keyStatus.hasKey ? 'text-white/60' : 'text-[#f0968a]'}`}>
+                      {keyStatus.hasKey ? 'Key active' : 'Key missing'}
+                    </span>
+                  </div>
+                )}
+
+                <dl className="grid grid-cols-[62px_1fr] gap-x-3 gap-y-2 border-t border-white/[0.07] px-3.5 py-3">
+                  {model.health && (
+                    <TelemetryRow
+                      label="Health"
+                      value={`${modelHealthState(model.health)} · ${timeAgo(model.health.checkedAt)}`}
+                      tone={model.health.status === 'offline' ? 'text-[#f0968a]' : 'text-white/75'}
+                    />
+                  )}
+                  <TelemetryRow
+                    label="Speed"
+                    value={hasProbe ? `${formatLatency(model.health!.latencyMs)} measured` : telemetry.speed}
+                  />
+                  <TelemetryRow label="Strong at" value={telemetry.strengths} />
+                  <TelemetryRow label="Weak at" value={telemetry.weaknesses} tone="text-white/45" />
+                </dl>
+
+                <button
+                  type="button"
+                  onClick={() => setExpanded(true)}
+                  className="flex w-full items-center justify-between border-t border-white/[0.07] px-3.5 py-2.5 font-mono-display text-[9px] uppercase tracking-[0.16em] text-white/45 transition-colors hover:bg-white/[0.03] hover:text-white"
+                >
+                  <span>Expand</span>
+                  <span aria-hidden="true">↗</span>
+                </button>
               </div>
-              <div>
-                <span className="text-[8px] uppercase tracking-wider text-white/30 block">Key Strengths</span>
-                <span className="text-white/80 leading-relaxed block">{getCardTelemetry(model).strengths}</span>
-              </div>
-              <div>
-                <span className="text-[8px] uppercase tracking-wider text-white/30 block">Limitations</span>
-                <span className="text-white/80 leading-relaxed block">{getCardTelemetry(model).weaknesses}</span>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-      {/* Activity Ping Indicator + measured latency */}
-      <div className="absolute top-3 right-3 flex items-center gap-1.5">
-        {model.health && (model.health.status === 'online' || model.health.status === 'degraded') && (
-          <span
-            title={`live ${modelHealthState(model.health)} · checked ${timeAgo(model.health.checkedAt)}`}
-            className={`font-mono text-[9px] font-bold ${model.health.status === 'online' ? 'text-emerald-400/90' : 'text-amber-400/90'}`}
-          >
-            {formatLatency(model.health.latencyMs)}
-          </span>
-        )}
-        {isPinging ? (
-          <span className="w-2 h-2 rounded-full bg-yellow-400/50 animate-pulse" />
-        ) : (
-          <>
-            <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-400' : 'bg-red-400'}`} />
-            {isOnline && (
-              <span className="absolute w-2 h-2 rounded-full bg-green-400 animate-ping opacity-75" />
-            )}
-          </>
-        )}
-      </div>
-
-      <div className="flex items-start justify-between" style={{ transform: 'translateZ(30px)' }}>
-        <div>
-          <div className={`font-mono-display text-[9px] uppercase tracking-widest ${providerColor[model.provider]}`}>
-            {model.provider}
-          </div>
-          <div className="mt-1 font-sans font-bold text-lg truncate max-w-[150px] text-white" title={model.name}>
-            {model.name}
-          </div>
-        </div>
-        <span className={`px-2 py-0.5 font-mono-display text-[8px] uppercase tracking-widest rounded-md ${
-          model.free ? 'bg-yellow-400/10 text-yellow-400 border border-yellow-400/20' : 'bg-white/10 text-white/50'
-        }`}>
-          {model.free ? 'FREE' : model.pricing_prompt}
-        </span>
-      </div>
-
-      <p className="mt-3 text-xs font-sans font-medium text-white/80 leading-relaxed line-clamp-2 h-8" style={{ transform: 'translateZ(20px)' }}>
-        {model.description}
-      </p>
-
-      {/* Attributes grid */}
-      <div className="mt-4 grid grid-cols-2 gap-2 font-sans text-[9px] uppercase tracking-widest" style={{ transform: 'translateZ(20px)' }}>
-        <div className="border border-white/5 rounded-lg px-2 py-1 bg-white/[0.01]">
-          <span className="text-white/40 text-[7px] block font-semibold">Context</span>
-          <span className="text-white font-bold">{model.context_length > 0 ? `${(model.context_length / 1000).toFixed(0)}K` : '—'}</span>
-        </div>
-        <div className="border border-white/5 rounded-lg px-2 py-1 bg-white/[0.01]">
-          <span className="text-white/40 text-[7px] block font-semibold">Type</span>
-          <span className="text-white font-bold truncate block">{friendlyType[model.type] || model.type}</span>
-        </div>
-      </div>
-
-      {/* Classification tags */}
-      {Array.isArray(model.tags) && model.tags.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1" style={{ transform: 'translateZ(20px)' }}>
-          {model.tags
-            .filter((t) => t !== 'Puter' && t !== 'Free' && t !== 'Cloudflare')
-            .map((tag) => (
-              <span
-                key={tag}
-                className={`px-1.5 py-0.5 font-mono-display text-[7px] uppercase tracking-wider rounded border ${
-                  TAG_COLORS[tag] || 'bg-white/[0.04] text-white/70 border-white/10'
-                }`}
-              >
-                {tag}
-              </span>
-            ))}
-        </div>
-      )}
-
-      <button
-        onClick={onSelect}
-        style={{ transform: 'translateZ(40px)' }}
-        className="mt-5 w-full border-t border-white/5 pt-3 font-mono-display text-[10px] uppercase tracking-widest text-white/60 hover:text-white transition-colors text-left flex justify-between items-center"
-      >
-        <span>Launch workspace</span>
-        <ArrowRight size={10} />
-      </button>
-    </motion.div>
+        <AnimatePresence>
+          {expanded && (
+            <ModelInfoDialog
+              model={model}
+              telemetry={telemetry}
+              keyStatus={keyStatus}
+              onClose={() => setExpanded(false)}
+            />
+          )}
+        </AnimatePresence>
+    </ModelCard>
   )
 }
 
@@ -2895,6 +3218,39 @@ function VaultSection({
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState('')
   const [testState, setTestState] = useState<Record<string, { testing?: boolean; valid?: boolean; detail?: string }>>({})
+
+  // Backend access — the vault's server routes (agents/drafting/memory) sit behind
+  // a security door. mintVaultToken already exchanges a stored provider key for the
+  // session token; this just surfaces it as one button so a non-technical user never
+  // touches a master key, .env or curl.
+  const [access, setAccess] = useState<'idle' | 'connecting' | 'connected' | 'blocked'>(
+    () => (sessionStorage.getItem('enzo.vault.token') ? 'connected' : 'idle'),
+  )
+  const [accessNote, setAccessNote] = useState('')
+
+  const activateBackend = async () => {
+    setAccess('connecting')
+    setAccessNote('')
+    // Persist typed keys first (mint reads them from the keyVault), then drop any
+    // stale token + the "don't retry this session" flag so an expired or previously
+    // failed mint attempts cleanly again instead of short-circuiting.
+    saveProviderKeys(keys)
+    sessionStorage.removeItem('enzo.vault.token')
+    sessionStorage.removeItem('enzo.vault.mintBlocked')
+    const token = await mintVaultToken()
+    if (token) {
+      setAccess('connected')
+      setAccessNote('Agents, drafting and memory now work on this device.')
+    } else {
+      const hasKey = Object.values(keys).some((v) => (v ?? '').trim()) || keyVault.hasStoredKeys()
+      setAccess('blocked')
+      setAccessNote(
+        hasKey
+          ? 'Backend did not respond — make sure the ENZO server is running, then retry.'
+          : 'Add one provider key below and it opens the backend automatically.',
+      )
+    }
+  }
 
   const handleTestKey = async (provider: string, value: string) => {
     const trimmed = value.trim()
@@ -3039,6 +3395,42 @@ function VaultSection({
                 ? 'aes-256-gcm · passphrase'
                 : 'aes-256-gcm · this device'}
           </span>
+        </div>
+
+        {/* Backend access — one click past the vault security door. */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-3.5 bg-white/[0.01]">
+          <div className="flex items-center gap-2.5">
+            <span
+              className="h-1.5 w-1.5 shrink-0 rounded-full"
+              style={{ backgroundColor: access === 'connected' ? '#f0968a' : 'rgba(255,255,255,0.25)' }}
+            />
+            <div>
+              <div className="font-mono-display text-[10px] uppercase tracking-widest text-white/80">
+                {access === 'connected' ? 'Backend connected' : 'Backend access'}
+              </div>
+              <p
+                className="mt-0.5 max-w-md font-light text-[11px] leading-relaxed"
+                style={{ color: access === 'blocked' ? '#c96b62' : 'rgba(255,255,255,0.45)' }}
+              >
+                {accessNote ||
+                  (access === 'connected'
+                    ? 'This device can reach agents, drafting and memory.'
+                    : 'Unlocks agents, drafting and memory — no master key or terminal needed.')}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={activateBackend}
+            disabled={access === 'connecting'}
+            className="rounded-full px-4 py-1.5 font-mono-display text-[9px] uppercase tracking-widest transition-all disabled:opacity-50 cursor-pointer"
+            style={
+              access === 'connected'
+                ? { color: 'rgba(255,255,255,0.7)', background: 'rgba(255,255,255,0.06)' }
+                : { color: '#0b0b0b', backgroundColor: '#f0968a' }
+            }
+          >
+            {access === 'connecting' ? 'Connecting…' : access === 'connected' ? 'Reconnect' : 'Connect'}
+          </button>
         </div>
 
         {/* Inputs */}

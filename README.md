@@ -13,7 +13,8 @@
   <a href="https://enzo-hub.duckdns.org">Live demo</a> ·
   <a href="#six-surfaces-one-workspace">What's inside</a> ·
   <a href="#security">Security</a> ·
-  <a href="#whats-new-in-v120">What's new</a> ·
+  <a href="#whats-new-in-v130">What's new</a> ·
+  <a href="#usage-guide">Usage guide</a> ·
   <a href="docs/CHANGELOG.md">Changelog</a>
 </p>
 
@@ -41,7 +42,7 @@
 | Pentest assertions | 44 | auth bypass, IDOR, hostile payloads, stream integrity |
 | Unit + security tests | 298 | agent, vault, crypto and model suites |
 | TypeScript (strict) | ~44,000 lines | one language, strict mode throughout |
-| Releases | 3 in the first week | v1.0.0 → v1.2.0, everything in the [changelog](docs/CHANGELOG.md) |
+| Releases | 4 | v1.0.0 → v1.3.0, everything in the [changelog](docs/CHANGELOG.md) |
 
 ## Quickstart
 
@@ -73,7 +74,8 @@ On a fresh self-hosted instance the **first live-validated key you paste claims 
 | Surface | What it does |
 |---|---|
 | **Terminal** | Streaming chat with 300+ models — normal, thinking, research and coding modes — with a live ECG-style health trace in the toolbar that flatlines red the moment the catalog is unreachable |
-| **Model marketplace** | One unified catalog across all 9 providers with live health checks and free-tier flags, so you pick by what actually works rather than what's marketed |
+| **Model marketplace** | One unified catalog across all 9 providers — cards now carry the platform's own cover art and a research panel with real download counts, licences and benchmarks |
+| **Music player** | Search any song and play it in the marketplace — keyless, no YouTube API key — with a 5-band equalizer that actually re-shapes the audio |
 | **Agent builder** | Describe a task in plain English; ENZO drafts the agent's full operating manual, and the agent keeps training itself on your activity from then on |
 | **Research mode** | A deep-research loop that writes its own queries, reads what it finds, and decides when it's done — under hard budgets so it can't burn your key |
 | **Code-gen** | Writes a coding project, boots it, previews it live, and tells you when it's broken |
@@ -111,7 +113,82 @@ The full threat model is written down — checkable, with the code that makes ea
 - **Every push runs a 44-assertion black-box pentest** against a booted server — auth bypass, hostile payloads, IDOR, stream integrity — plus a keyless-boot proof: the server must start with zero provider keys. That's the BYOK guarantee, tested, not promised.
 - **The limits are stated up front.** Self-hosted mode stores the first key you claim in the container `.env` (sealed in the memory volume) so scheduled agents can run while your browser is closed — that trade is documented, not hidden. [docs/SECURITY.md](docs/SECURITY.md) covers what's protected, what isn't, and why.
 
-## What's new in v1.2.0
+## What's new in v1.3.0
+
+- **Music player** — search any song and play it straight from the marketplace, keyless (no YouTube API key, no quota): a collapsed corner pill expands into a full player card — vinyl disc hero, queue walking, shuffle/loop/like, keyboard controls. **For You** turns your own listening history (kept device-local) into song seeds through your own provider key.
+- **Real equalizer** — a 5-band Web Audio EQ (bass / low-mid / mid / presence / air, ±12 dB, preamp, five presets) that genuinely re-shapes the frequency response when you opt in. Enhance starts **off** — normal playback is untouched. Tracks the enhancer can't stream fall back to the YouTube engine automatically; playback never breaks.
+- **Marketplace, redesigned** — every model card now carries the platform's own cover art, brand colour on hover, live health dot + latency, and a research panel with real facts: HuggingFace download counts, licences, knowledge cutoffs, Artificial Analysis scores and a Wikipedia-backed family summary — pulled keyless from public endpoints, never guessed.
+- **NYC Subway theme** — the workspace's new flagship backdrop: an AI-animated subway ride through a tunnel, with a handheld-camera tremble, monochrome film grade and animated recording grain added in code (the video ships clean).
+- **A quieter interface** — the whole workspace went monochrome + a single coral accent: the terminal toggle switch rebuilt (was a 385-line component with dead animations), the weather chip moved up beside the catalog header, the nav collapses on scroll and springs back, and the top bar got a cursor-reactive dot grid.
+- Previously in [v1.2.0](https://github.com/theguysudo/ENZO/releases/tag/v1.2.0): the terminal health ECG, the onboarding stepper, ambient weather, the smoke top bar.
+- Full history: [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
+
+## Usage guide
+
+### macOS
+
+**Requirements:** [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/) (Apple Silicon or Intel). Allocate at least 4 GB RAM in Docker Desktop → Settings → Resources (the model catalog + agents like headroom).
+
+```bash
+git clone https://github.com/theguysudo/ENZO.git
+cd ENZO
+docker compose up -d
+```
+
+Open **http://localhost:5001**, press **Login**, and paste a key from any provider (OpenRouter, Google AI Studio, NVIDIA NIM — all have free tiers; links are in the app). You're in.
+
+**Everyday commands**
+
+```bash
+docker compose logs -f          # follow what the server is doing
+docker compose restart          # bounce the app, data survives
+docker compose pull && docker compose up -d   # upgrade to a new release
+docker compose down             # stop (add -v ONLY to wipe all data)
+```
+
+**Where your stuff lives:** projects, learned skills and agent memory are in named Docker volumes (`docker volume ls | grep enzo`) — they survive upgrades and `down`. Your provider keys never touch the server: they're sealed in your browser's vault, and on a fresh install the first key you paste claims the instance for server-side features (scheduled agents).
+
+**If the app feels slow on a MacBook**: the video themes are GPU-composited; on battery or an older machine, flip the **Lite/Full** chip (bottom-right) — it swaps video backgrounds for pure shader ones with one click.
+
+**Updating:** `docker compose pull && docker compose up -d`. Releases are tagged at [github.com/theguysudo/ENZO/releases](https://github.com/theguysudo/ENZO/releases).
+
+### Windows
+
+**Requirements:** [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/) with WSL 2 (Docker Desktop's installer sets this up; reboot when it asks). Give it ≥ 4 GB RAM in Settings → Resources.
+
+In **PowerShell** (no clone folder needed — `git` comes with Docker Desktop's WSL distro, or use [Git for Windows](https://git-scm.com/download/win)):
+
+```powershell
+git clone https://github.com/theguysudo/ENZO.git
+cd ENZO
+docker compose up -d
+```
+
+Open **http://localhost:5001** in your browser, press **Login**, paste a provider key — done.
+
+**Everyday commands**
+
+```powershell
+docker compose logs -f          # follow the server log
+docker compose restart          # bounce the app
+docker compose pull; docker compose up -d   # upgrade to a new release
+docker compose down             # stop (add -v ONLY to wipe all data)
+```
+
+**Windows notes**
+
+- If `http://localhost:5001` doesn't load, check Docker Desktop is running (whale icon in the system tray), then `docker compose ps` — the port is listed there.
+- Anti-virus software occasionally slows the first boot (image extraction). The second start is fast.
+- Everything else — volumes, keys, the Lite/Full chip — works exactly as on macOS.
+
+### Linux (same everywhere)
+
+```bash
+git clone https://github.com/theguysudo/ENZO.git
+cd ENZO && docker compose up -d   # → http://localhost:5001
+```
+
+## What's new in v1.2.0 (previous)
 
 - **Live terminal health ECG** — the static ONLINE label is now a heart-monitor trace sweeping the terminal toolbar; reachable catalog keeps it beating, anything else freezes a red flatline.
 - **Onboarding, rebuilt** — an animated stepper walks the three connect-provider steps (numbers morph into checkmarks, completed steps are click-back-navigable), with a liquid save switch that ticks when your key lands.
@@ -141,7 +218,7 @@ Every push to `main` runs the full pipeline in [`.github/workflows/ci.yml`](.git
 | | `latest` / `lite` | `full` |
 |---|---|---|
 | Homepage background | Nebula drift — animated WebGL | + 8 anime video themes |
-| Workspace/terminal background | Default Particles — animated three.js | + 9 cinematic video themes |
+| Workspace/terminal background | Default Particles (three.js) + the NYC Subway ride | + 9 cinematic video themes |
 | Image download | ~150 MB | ~470 MB |
 
 Both animate by default — the lite themes are GPU shaders, not static images. To get every theme:

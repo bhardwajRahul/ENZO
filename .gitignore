@@ -132,5 +132,8 @@ enzo-project-*/
 # which a fresh clone could otherwise not perform.)
 config/.env.example
 
+# tsc incremental cache — local build artifact, never ship
+*.tsbuildinfo
+
 # docker repo: dist is built inside the image, never committed
 synthetic-nature/dist

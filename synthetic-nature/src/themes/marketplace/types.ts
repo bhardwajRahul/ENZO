@@ -1,6 +1,7 @@
 import { IS_LITE } from '../../lib/variant'
 
 export type MarketplaceCyberpunkScene =
+  | 'nyc_subway'
   | 'rooftop'
   | 'boulevard'
   | 'ink_rain'
@@ -20,6 +21,7 @@ export interface WorkspaceThemeMeta {
 
 const ALL_WORKSPACE_THEMES: WorkspaceThemeMeta[] = [
   { id: 'spring_day', label: 'Default Particles', scene: null },
+  { id: 'nyc_subway', label: 'NYC Subway Ride', scene: 'nyc_subway' },
   { id: 'alien_contact', label: 'Alien Contact', scene: 'alien' },
   { id: 'rocket', label: 'Rocket Loop', scene: 'rocket' },
   { id: 'space_probe', label: 'Space Probe', scene: 'space_probe' },
@@ -31,18 +33,21 @@ const ALL_WORKSPACE_THEMES: WorkspaceThemeMeta[] = [
   { id: 'milky_way', label: 'Milky Way', scene: 'milky_way' },
 ]
 
-// The lite docker image ships zero theme videos, and Default Particles (the
-// first entry) is the only workspace theme that needs none — it's a pure
-// three.js particle field (scene: null). Slicing here (not in consumers)
-// keeps pickers, the terminal backdrop inheritance, and localStorage guards
-// consistent: in a lite build the app simply has one workspace theme.
-// See src/lib/variant.ts.
+// The lite docker image ships exactly one theme video: the 3.3MB AI-animated
+// NYC subway loop (the only mp4 kept by the Dockerfile's lite branch).
+// Default Particles (first entry) needs none, so slicing to the first TWO
+// entries gives the lite build one pure-WebGL theme plus the subway ride —
+// small enough that `enzo:lite` still feels tiny while self-hosters still
+// get a real-video theme. Slicing here (not in consumers) keeps pickers,
+// the terminal backdrop inheritance, and localStorage guards consistent.
+// See src/lib/variant.ts and deploy/docker-variant/Dockerfile.
 export const WORKSPACE_THEMES: WorkspaceThemeMeta[] = IS_LITE
-  ? ALL_WORKSPACE_THEMES.slice(0, 1)
+  ? ALL_WORKSPACE_THEMES.slice(0, 2)
   : ALL_WORKSPACE_THEMES
 
 export function getAnimeSceneFromId(id: string): MarketplaceCyberpunkScene | null {
   const sceneMap: Record<string, MarketplaceCyberpunkScene> = {
+    nyc_subway: 'nyc_subway',
     alien_contact: 'alien',
     rocket: 'rocket',
     space_probe: 'space_probe',

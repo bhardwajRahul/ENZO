@@ -16,8 +16,8 @@ export function LowPowerToggle() {
       aria-pressed={low}
       className="fixed bottom-6 right-6 z-40 rounded-full border border-white/10 bg-black/40 backdrop-blur-xl px-3 py-2 flex items-center gap-2 opacity-60 hover:opacity-100 transition-opacity cursor-pointer select-none"
     >
-      <span className={`w-1.5 h-1.5 rounded-full ${low ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-      <span className="font-mono text-[8px] uppercase tracking-[0.2em] text-white/70">
+      <span className={`w-1.5 h-1.5 rounded-full ${low ? 'bg-[#f0968a]' : 'bg-white/85'}`} />
+      <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/70">
         {low ? 'Lite' : 'Full'}
       </span>
     </button>

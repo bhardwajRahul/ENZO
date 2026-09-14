@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronDown,
@@ -13,6 +14,7 @@ import {
   Orbit,
   Satellite,
   Terminal,
+  Train,
 } from 'lucide-react'
 import { LimelightNav, type NavItem } from './ui/limelight-nav'
 import { WORKSPACE_THEMES } from '../themes/marketplace'
@@ -24,6 +26,7 @@ interface HeaderThemeSelectorProps {
 
 const THEME_META: Record<string, { icon: React.ReactElement; label: string; accent: string }> = {
   spring_day:     { icon: <Flower2 />,     label: 'Default Particles',  accent: '#4ade80' },
+  nyc_subway:     { icon: <Train />,       label: 'NYC Subway Ride',    accent: '#e2e8f0' },
   alien_contact:  { icon: <Bot />,         label: 'Alien Contact',      accent: '#4ade80' },
   rocket:         { icon: <Orbit />,       label: 'Rocket Loop',        accent: '#fb923c' },
   space_probe:    { icon: <Satellite />,   label: 'Space Probe',        accent: '#38bdf8' },
@@ -44,6 +47,10 @@ export function HeaderThemeSelector({ activeId, onChange }: HeaderThemeSelectorP
   const [isOpen, setIsOpen] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  // Portal target ref (the dropdown subtree lives at <body> level).
+  const dropdownRef = useRef<HTMLDivElement | null>(null)
+  // Fixed coordinates for the portalled dropdown (anchored to the button).
+  const [anchor, setAnchor] = useState({ top: 0, right: 0 })
 
   const currentAccent = THEME_META[activeId]?.accent ?? '#4ade80'
 
@@ -71,6 +78,14 @@ export function HeaderThemeSelector({ activeId, onChange }: HeaderThemeSelectorP
       }
       return next
     })
+    // The header nav is overflow-hidden, so the dropdown can't live inside
+    // it — it portals to <body> and needs fresh fixed coords on every open.
+    setAnchor((prev) => {
+      const el = containerRef.current
+      if (!el) return prev
+      const r = el.getBoundingClientRect()
+      return { top: r.bottom + 12, right: window.innerWidth - r.right }
+    })
   }, [startTimer, clearTimer])
 
   const handleSelect = useCallback(
@@ -92,10 +107,14 @@ export function HeaderThemeSelector({ activeId, onChange }: HeaderThemeSelectorP
     }
   }, [isOpen, startTimer])
 
-  // Close dropdown on click outside
+  // Close dropdown on click outside. The dropdown is portalled to <body>
+  // (outside containerRef), so its own subtree must count as "inside".
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      const inContainer = containerRef.current?.contains(target)
+      const inDropdown = dropdownRef.current?.contains(target)
+      if (!inContainer && !inDropdown) {
         setIsOpen(false)
         clearTimer()
       }
@@ -144,25 +163,35 @@ export function HeaderThemeSelector({ activeId, onChange }: HeaderThemeSelectorP
         />
       </button>
 
-      {/* Dropdown horizontal LimelightNav floating below header */}
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -6, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -6, scale: 0.97 }}
-            transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="absolute top-full right-0 mt-3 z-50 whitespace-nowrap"
-          >
-            <LimelightNav
-              items={navItems}
-              defaultActiveIndex={activeIndex}
-              key={activeId}
-              accentColor={currentAccent}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Dropdown horizontal LimelightNav — portalled to <body>: the glass
+          header is overflow-hidden (46px tall), so an absolutely-positioned
+          dropdown inside it is clipped to the bar and renders invisible.
+          Fixed coords come from `anchor`, measured at open time. */}
+      {createPortal(
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div
+              ref={dropdownRef}
+              initial={{ opacity: 0, y: -6, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.97 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              style={{ top: anchor.top, right: anchor.right }}
+              className="fixed z-[100] whitespace-nowrap"
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
+            >
+              <LimelightNav
+                items={navItems}
+                defaultActiveIndex={activeIndex}
+                key={activeId}
+                accentColor={currentAccent}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
     </div>
   )
 }

@@ -4,15 +4,43 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
+
 import type { MarketplaceCyberpunkScene } from './types'
 
 interface SceneSources {
   forward: string
   reversed: string
   isSeamlessLoop?: boolean
+  // Real-footage scenes play at native speed; the anime loops are slowed
+  // (PLAYBACK_RATE) to stretch their loop. Per-scene override, default 0.6.
+  playbackRate?: number
+  // Adds a continuous handheld camera tremble (position + micro-rotation
+  // noise) to the shader — for real-footage scenes that should feel like a
+  // phone recording rather than a floating synthetic camera.
+  tremble?: boolean
+  // Unsplash-style grade (see subway scene): contrast curve + glass-lift +
+  // bottom vignette, pushing real footage toward the moody photo look.
+  graded?: boolean
+  // Overlays a faint ambient dot-field wave (sparse monochrome dot grid +
+  // slow diagonal brightness wave, time-driven, decoupled from audio).
+  // Subway only — the anime loops are already stylised.
+  pixelWave?: boolean
 }
 
 const MARKETPLACE_CYBERPUNK_VIDEOS: Record<MarketplaceCyberpunkScene, SceneSources> = {
+  // Seated interior POV of an NYC subway ride — the door, seats and tunnel
+  // view in frame, 1080p. AI-animated from Juan Giraudo's Unsplash photo
+  // "train door" (J7zytkieZBs) in his exact composition; cut to an 8.7s
+  // crossfade-seamless loop. See background_elements/marketplace/CREDITS.md.
+  nyc_subway: {
+    forward: '/background_elements/marketplace/Subway_doors_and_tunnel_view_202609111948_gwr_loop.mp4',
+    reversed: '/background_elements/marketplace/Subway_doors_and_tunnel_view_202609111948_gwr_loop.mp4',
+    isSeamlessLoop: true,
+    playbackRate: 1.0,
+    tremble: true,
+    graded: true,
+    pixelWave: true,
+  },
   rooftop: {
     forward: '/background_elements/marketplace/Anime_cyberpunk_rooftop_dojo_20260719.mp4',
     reversed: '/background_elements/marketplace/Anime_cyberpunk_rooftop_dojo_20260719.mp4',
@@ -88,12 +116,46 @@ uniform vec2  uMouse;
 uniform float uMouseActive;
 uniform float uTime;
 uniform float uVideoAspect;
+uniform float uTremble; // 0 = static camera, 1 = handheld phone-recording tremble
+uniform float uGrade;   // 0 = raw footage, 1 = Unsplash-style monochrome grade
+uniform float uWave;    // 0 = off, 1 = ambient dot-field wave overlay
 uniform vec3  uRipples[${MAX_RIPPLES}];
 uniform float uRippleCount;
+
+// Two-octave value noise for the handheld drift — smooth, never repeats.
+float hash(vec2 p) {
+  p = fract(p * vec2(234.34, 435.345));
+  p += dot(p, p + 34.23);
+  return fract(p.x * p.y);
+}
+float vnoise(float t) {
+  float i = floor(t);
+  float f = fract(t);
+  float a = hash(vec2(i, 1.7));
+  float b = hash(vec2(i + 1.0, 1.7));
+  float u = f * f * (3.0 - 2.0 * f);
+  return mix(a, b, u);
+}
 
 void main() {
   vec2 uv = gl_FragCoord.xy / uResolution;
   vec2 disp = vec2(0.0);
+
+  // Handheld camera tremble: slow drift (body sway) + fast jitter (train
+  // rattle) on both axes, plus a micro-rotation. Amplitudes are tiny —
+  // this is a steady hand on a rattling train, not an earthquake.
+  if (uTremble > 0.5) {
+    float t = uTime;
+    float swayX = (vnoise(t * 0.35) - 0.5) * 0.007;
+    float swayY = (vnoise(t * 0.41 + 50.0) - 0.5) * 0.006;
+    float jitterX = (vnoise(t * 7.3 + 20.0) - 0.5) * 0.0035;
+    float jitterY = (vnoise(t * 6.7 + 80.0) - 0.5) * 0.0035;
+    float rot = (vnoise(t * 0.5 + 130.0) - 0.5) * 0.006;
+    vec2 c = uv - 0.5;
+    mat2 R = mat2(cos(rot), -sin(rot), sin(rot), cos(rot));
+    vec2 shook = R * c + 0.5 + vec2(swayX + jitterX, swayY + jitterY);
+    uv = mix(uv, shook, uTremble);
+  }
 
   if (uMouseActive > 0.5) {
     float dm = distance(uv, uMouse);
@@ -123,12 +185,42 @@ void main() {
   }
 
   vec2 texUv = (uv - 0.5) * s + 0.5 + disp;
+
   vec4 colA = texture2D(uTexA, texUv);
   vec4 colB = texture2D(uTexB, texUv);
 
   // Micro-microsecond Hermite smoothstep blend for invisible infinite video loop
   float blend = smoothstep(0.0, 1.0, clamp(uCrossfade, 0.0, 1.0));
-  gl_FragColor = mix(colA, colB, blend);
+  vec3 col = mix(colA.rgb, colB.rgb, blend);
+
+  // Unsplash-style grade for real footage: neutral, two-tone, moody.
+  // Contrast pivot at 0.36 pushes the dark interior toward deep shadow while
+  // the glass-lift term keeps bright panes from clipping; bottom vignette
+  // deepens the seated-camera look; animated grain adds recording texture.
+  if (uGrade > 0.5) {
+    float l = dot(col, vec3(0.299, 0.587, 0.114));
+    l = clamp((l - 0.36) * 1.16 + 0.36, 0.0, 1.0);
+    l += smoothstep(0.75, 1.0, l) * 0.05; // glass-lift
+    vec2 suv = gl_FragCoord.xy / uResolution;
+    l *= mix(0.72, 1.0, smoothstep(0.0, 0.42, suv.y)); // bottom vignette
+    float g = fract(sin(dot(gl_FragCoord.xy + vec2(uTime * 71.0, uTime * 53.0), vec2(12.9898, 78.233))) * 43758.5453);
+    l += (g - 0.5) * 0.045; // recording grain
+    col = vec3(clamp(l, 0.0, 1.0));
+  }
+
+  // Ambient dot-field wave — sparse device-px dot grid, slow diagonal
+  // brightness wave, decoupled from audio. Subway only. (GLSL builtin dot()
+  // is a function, so the per-dot mask is named dv.)
+  if (uWave > 0.5) {
+    float sp = 26.0;                               // dot spacing, device px
+    vec2 g = fract(gl_FragCoord.xy / sp) - 0.5;
+    float dv = 1.0 - smoothstep(0.14, 0.26, length(g));
+    vec2 gp = gl_FragCoord.xy / uResolution;
+    float w = 0.5 + 0.5 * sin((gp.x + gp.y) * 9.0 - uTime * 0.6);
+    col += dv * w * 0.05;                          // faint, additive white
+  }
+
+  gl_FragColor = vec4(col, 1.0);
 }
 `
 
@@ -166,11 +258,14 @@ export function MarketplaceCyberpunkSky({ scene }: { scene: MarketplaceCyberpunk
     const vidA = videoRefA.current
     const vidB = videoRefB.current
     const config = MARKETPLACE_CYBERPUNK_VIDEOS[scene]
+    // Real footage (nyc_subway) runs at 1.0; the synthetic anime loops are
+    // slowed to stretch their 10–20s sources. Per-scene, 0.6 by default.
+    const rate = config.playbackRate ?? PLAYBACK_RATE
     if (vidA && vidB) {
       vidA.src = config.forward
       vidA.load()
       vidA.currentTime = 0.01
-      vidA.playbackRate = PLAYBACK_RATE
+      vidA.playbackRate = rate
       if (config.isSeamlessLoop) {
         vidA.loop = true
         // Native loops never crossfade, so the second decoder is never read.
@@ -182,7 +277,7 @@ export function MarketplaceCyberpunkSky({ scene }: { scene: MarketplaceCyberpunk
         vidB.src = config.reversed
         vidB.load()
         vidB.currentTime = 0.01
-        vidB.playbackRate = PLAYBACK_RATE
+        vidB.playbackRate = rate
         vidA.loop = false
         vidB.loop = false
       }
@@ -200,6 +295,8 @@ export function MarketplaceCyberpunkSky({ scene }: { scene: MarketplaceCyberpunk
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+    // ponytail: RM sampled once at mount; a runtime toggle needs a reload.
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const gl = canvas.getContext('webgl', {
       premultipliedAlpha: false,
       // A background quad showing a video texture is trivial for an
@@ -249,6 +346,9 @@ export function MarketplaceCyberpunkSky({ scene }: { scene: MarketplaceCyberpunk
     const uMouseActive = gl.getUniformLocation(program, 'uMouseActive')
     const uTime = gl.getUniformLocation(program, 'uTime')
     const uVideoAspect = gl.getUniformLocation(program, 'uVideoAspect')
+    const uTremble = gl.getUniformLocation(program, 'uTremble')
+    const uGrade = gl.getUniformLocation(program, 'uGrade')
+    const uWave = gl.getUniformLocation(program, 'uWave')
     const uRipples = gl.getUniformLocation(program, 'uRipples')
     const uRippleCount = gl.getUniformLocation(program, 'uRippleCount')
 
@@ -332,7 +432,7 @@ export function MarketplaceCyberpunkSky({ scene }: { scene: MarketplaceCyberpunk
           const remaining = active.duration - active.currentTime
           if (remaining <= PREWARM_LEAD_TIME && standby.paused) {
             standby.currentTime = 0.01
-            standby.playbackRate = PLAYBACK_RATE
+            standby.playbackRate = config.playbackRate ?? PLAYBACK_RATE
             standby.play().catch(() => {})
           }
           const isA = activeBufferRef.current === 'A'
@@ -419,6 +519,9 @@ export function MarketplaceCyberpunkSky({ scene }: { scene: MarketplaceCyberpunk
         gl.uniform1f(uMouseActive, mouse.active)
         gl.uniform1f(uTime, (now - start) / 1000)
         gl.uniform1f(uVideoAspect, activeVideo.videoWidth / activeVideo.videoHeight)
+        gl.uniform1f(uTremble, MARKETPLACE_CYBERPUNK_VIDEOS[sceneRef.current].tremble ? 1 : 0)
+        gl.uniform1f(uGrade, MARKETPLACE_CYBERPUNK_VIDEOS[sceneRef.current].graded ? 1 : 0)
+        gl.uniform1f(uWave, (!reduceMotion && MARKETPLACE_CYBERPUNK_VIDEOS[sceneRef.current].pixelWave) ? 1 : 0)
         gl.uniform3fv(uRipples, rippleData)
         gl.uniform1f(uRippleCount, ripples.length)
 

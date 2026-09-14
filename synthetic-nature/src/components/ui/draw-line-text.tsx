@@ -67,7 +67,7 @@ export const DrawLineText = ({
     <svg
       {...props}
       ref={wrapperRef}
-      style={{ userSelect: "none", width: textDimension.width + "px", height: textDimension.height * 1.03 + "px" }}
+      style={{ userSelect: "none", overflow: "visible", width: textDimension.width + "px", height: textDimension.height * 1.03 + "px" }}
     >
       {text.split("").map((char, i) => (
         <text

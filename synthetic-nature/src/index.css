@@ -104,6 +104,51 @@ body {
   font-family: 'Playfair Display', 'EB Garamond', 'Garamond', serif;
 }
 
+/* ── Monochrome gradient headline ────────────────────────── */
+/*
+ * The marketplace headline: white at the light source washing out to grey at
+ * the far edge of the text. The light source is --gx/--gy, which the heading's
+ * pointer handler pins to the cursor, so the gradient travels with the mouse;
+ * unhovered it rests at top-centre (white cap line, grey baseline and ends).
+ *
+ * The dark stop is #5f5f5f, not true black — over the dark video background
+ * the far glyphs would otherwise dissolve into the field.
+ * ponytail: the 230px radius + mid stop are the tuning knobs; vars are
+ * @property-registered purely so the 90ms transition can interpolate them.
+ */
+@property --gx {
+  syntax: '<length-percentage>';
+  inherits: false;
+  initial-value: 50%;
+}
+@property --gy {
+  syntax: '<length-percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
+.text-gradient-mono {
+  background-image: radial-gradient(circle 230px at var(--gx, 50%) var(--gy, 0%),
+    #ffffff 0%,
+    #ffffff 20%,
+    #a8a8a8 62%,
+    #5f5f5f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  /* bg-clip:text only paints inside the padding box — without this, Garamond's
+     g/y/p descenders fall below it and get clipped flat. 0.22em clears the tail. */
+  padding-bottom: 0.22em;
+  transition: --gx 90ms ease-out, --gy 90ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .text-gradient-mono {
+    transition: none;
+  }
+}
+
 /* ── Liquid Fill Button — pure CSS, no Tailwind hover dependency ── */
 
 /* Travelling wave: shift by exactly one wavelength so it loops seamlessly. */
@@ -920,4 +965,613 @@ body[data-craft="home"] hr.border-t {
   margin-left: 1.5rem;
   margin-right: 1.5rem;
   width: calc(100% - 3rem);
+}
+
+/* ── Model card "Chat" button: terminal-glitch tail ───────────────────────── */
+
+/* The upstream snippet's glyph-scramble is kept verbatim (see @keyframes
+   chitchat); the skin around it is ours — a small monochrome chip sized to sit
+   in the card footer next to the tag pills, with coral reserved for hover.
+   Keyframed `content` has no Tailwind equivalent, so the skin lives here and
+   the card keeps only layout utilities. */
+.btn-chitchat {
+  /* Opaque, and deliberately not transparent: `background: inherit` on the
+     span is what hides the label under the scrambling glyphs. A translucent
+     chip would show "Chat" straight through the animation. */
+  --btn-default-bg: #121317;
+  --btn-accent: #f0968a;
+  --btn-animation-duration: 1.2s;
+
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: var(--btn-default-bg);
+  color: rgba(255, 255, 255, 0.75);
+  font: 500 10px/1 Menlo, "Roboto Mono", monospace;
+  text-transform: uppercase;
+  cursor: pointer;
+  overflow: hidden;
+  transition: color 0.25s, border-color 0.25s, background-color 0.25s, box-shadow 0.25s;
+}
+
+/* `background: inherit` is what makes the effect legible: the scrambling
+   glyphs are absolutely positioned over the label, and their opaque backdrop
+   hides it until the sequence resolves. */
+.btn-chitchat span {
+  letter-spacing: 0.18em;
+  /* The tracking is trailing-side, so the last letter sits visually off-centre
+     without this. */
+  text-indent: 0.18em;
+  box-sizing: border-box;
+  position: relative;
+  background: inherit;
+}
+
+.btn-chitchat span::before {
+  box-sizing: border-box;
+  position: absolute;
+  content: "";
+  background: inherit;
+  /* The label is "Chat", not "Button". Without this the five-glyph frames wrap
+     onto a second line and get clipped by the button's overflow. */
+  white-space: nowrap;
+}
+
+.btn-chitchat:hover,
+.btn-chitchat:focus-visible {
+  border-color: var(--btn-accent);
+  color: var(--btn-accent);
+  background: #17181c;
+  box-shadow: 0 0 12px 0 rgba(240, 150, 138, 0.28);
+}
+
+/* focus-visible only for the ring, but plain :focus still drives the scramble —
+   keyboard focus should read the same as hover. */
+.btn-chitchat:focus-visible {
+  outline: none;
+}
+
+.btn-chitchat:hover span::before,
+.btn-chitchat:focus span::before {
+  animation: chitchat linear both var(--btn-animation-duration);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-chitchat:hover span::before,
+  .btn-chitchat:focus span::before {
+    animation: none;
+  }
+}
+
+@keyframes chitchat {
+  0%   { content: "#"; }
+  5%   { content: "."; }
+  10%  { content: "^{"; }
+  15%  { content: "-!"; }
+  20%  { content: "#$_"; }
+  25%  { content: "№:0"; }
+  30%  { content: "#{+."; }
+  35%  { content: "@}-?"; }
+  40%  { content: "?{4@%"; }
+  45%  { content: "=.,^!"; }
+  50%  { content: "?2@%"; }
+  55%  { content: ";1}]"; }
+  60%  { content: "?{%:%"; right: 0; }
+  65%  { content: "|{f[4"; right: 0; }
+  70%  { content: "{4%0%"; right: 0; }
+  75%  { content: "'1_0<"; right: 0; }
+  80%  { content: "{0%"; right: 0; }
+  85%  { content: "]>'"; right: 0; }
+  90%  { content: "4"; right: 0; }
+  95%  { content: "2"; right: 0; }
+  100% { content: ""; right: 0; }
+}
+
+/* ============================ Music player ============================ */
+/* Monochrome dock (bottom-left), WeatherWidget glass shell. Coral (#f0968a)
+   is the ONLY accent: progress fill, active shuffle/loop, filled ♥. Layout
+   authored here — the pasted widget shipped no layout CSS. */
+
+.mp-dock {
+  position: fixed;
+  left: 1rem;
+  bottom: 1rem;
+  z-index: 40;
+  font-family: 'Space Grotesk', ui-monospace, 'SFMono-Regular', monospace;
+  color: #fff;
+}
+
+/* iframe host — kept present per YouTube ToS, visually minimal (1px) */
+.mp-yt-host {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0.01;
+  pointer-events: none;
+}
+
+.mp-card {
+  width: 300px;
+  position: relative;
+  padding: 14px 16px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(20, 20, 22, 0.55);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2), 0 10px 30px rgba(0, 0, 0, 0.35);
+  outline: none;
+  animation: mp-card-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mp-card:focus-visible { border-color: rgba(255, 255, 255, 0.28); }
+
+.mp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.mp-kicker {
+  flex: 1;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: rgba(255, 255, 255, 0.6);
+}
+.mp-icon-btn {
+  display: grid; place-items: center;
+  width: 20px; height: 20px;
+  color: rgba(255, 255, 255, 0.5);
+  transition: color 0.2s;
+}
+.mp-icon-btn:hover { color: #fff; }
+.mp-icon-btn.is-active { color: #f0968a; }
+
+.mp-hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 14px;
+  min-height: 100px;
+}
+
+/* Vinyl disc — circular clip (.mp-mask, static), spinning layer (.mp-spin,
+   rotated by JS), stacked grayscale covers that crossfade, fixed center hole.
+   Click toggles zoom. */
+.mp-mask {
+  position: relative;
+  width: 88px; height: 88px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.45s;
+}
+.mp-spin { position: absolute; inset: 0; will-change: transform; }
+.mp-cover {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  filter: grayscale(1) contrast(1.05);
+  user-select: none;
+}
+.mp-cover.cover-enter { animation: mp-cover-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.mp-cover.cover-exit  { animation: mp-cover-out 0.7s ease both; }
+.mp-cover-empty { background: rgba(255, 255, 255, 0.06); }
+.mp-hole {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 26%; height: 26%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(12, 12, 14, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: grid; place-items: center;
+}
+.mp-hole-inner { width: 34%; height: 34%; border-radius: 50%; background: rgba(255, 255, 255, 0.28); }
+
+/* Click-to-zoom: the disc grows toward the card centre; the rest recedes. */
+.mp-card.is-zoomed .mp-mask { transform: translateX(56px) scale(2); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6); z-index: 3; }
+.mp-card.is-zoomed .mp-scales,
+.mp-card.is-zoomed .mp-track-info,
+.mp-card.is-zoomed .mp-bar,
+.mp-card.is-zoomed .mp-time,
+.mp-card.is-zoomed .mp-controls,
+.mp-card.is-zoomed .mp-actions {
+  opacity: 0.12;
+  filter: blur(1px);
+  pointer-events: none;
+  transition: opacity 0.3s, filter 0.3s;
+}
+
+/* 10×10 dot-matrix visualiser (ported from the widget). Time-driven — YouTube
+   exposes no audio frames — animated in JS; circles filled monochrome white. */
+.mp-scales { width: 96px; height: 106px; flex-shrink: 0; opacity: 0.9; overflow: visible; }
+.mp-scales circle { fill: rgba(255, 255, 255, 0.82); }
+
+/* Layered track info — newest layer in flow, older absolutely stacked; they
+   slide/fade past each other on skip (direction sets --dx). */
+.mp-track-info { position: relative; min-height: 46px; margin-bottom: 12px; }
+.mp-ti-layer { min-width: 0; }
+.mp-ti-abs { position: absolute; inset: 0; }
+.mp-artist {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-height: 12px;
+}
+.mp-track {
+  margin-top: 3px;
+  font-family: 'EB Garamond', 'Garamond', 'Times New Roman', serif;
+  font-size: 18px;
+  line-height: 1.2;
+  font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mp-artist.ti-enter, .mp-track.ti-enter { animation: mp-ti-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.mp-artist.ti-exit,  .mp-track.ti-exit  { animation: mp-ti-out 0.55s ease both; }
+
+.mp-bar {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+}
+.mp-bar-fill {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  border-radius: 999px;
+  background: #f0968a;
+  transition: width 0.25s linear;
+}
+.mp-time {
+  display: flex; justify-content: space-between;
+  margin-top: 6px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.mp-controls { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 12px; }
+.mp-ctrl {
+  display: grid; place-items: center;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.7);
+  transition: color 0.2s, background 0.2s, transform 0.15s;
+}
+.mp-ctrl:hover:not(:disabled) { color: #fff; background: rgba(255, 255, 255, 0.08); }
+.mp-ctrl:active:not(:disabled) { transform: scale(0.92); }
+.mp-ctrl:disabled { opacity: 0.3; cursor: not-allowed; }
+.mp-ctrl.is-active { color: #f0968a; }
+.mp-play { width: 44px; height: 44px; color: #0c0c0e; background: #fff; }
+.mp-play:hover:not(:disabled) { background: rgba(255, 255, 255, 0.9); color: #0c0c0e; }
+
+.mp-actions { display: flex; gap: 8px; margin-top: 12px; }
+.mp-like, .mp-foryou {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.75);
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.mp-like { padding: 0 12px; }
+.mp-foryou { flex: 1; }
+.mp-like:hover:not(:disabled), .mp-foryou:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+.mp-like:disabled, .mp-foryou:disabled { opacity: 0.4; cursor: not-allowed; }
+.mp-like.is-liked { color: #f0968a; border-color: rgba(240, 150, 138, 0.5); }
+
+.mp-hint {
+  margin-top: 8px;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.4);
+  text-align: center;
+}
+
+/* Search + catalog overlay — covers the card interior; search field on top,
+   scrollable results below. Coral only on a row's hover play glyph. */
+.mp-search {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  padding: 12px;
+  border-radius: 18px;
+  background: rgba(16, 16, 18, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: mp-card-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mp-search-top {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+.mp-search-ico { color: rgba(255, 255, 255, 0.5); flex-shrink: 0; }
+.mp-search-input {
+  flex: 1; min-width: 0;
+  background: transparent; border: none; outline: none;
+  color: #fff; font-size: 13px; font-family: inherit;
+}
+.mp-search-input::placeholder { color: rgba(255, 255, 255, 0.4); }
+.mp-search-close {
+  display: grid; place-items: center;
+  width: 18px; height: 18px; flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.5);
+  transition: color 0.2s;
+}
+.mp-search-close:hover { color: #fff; }
+
+.mp-results {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.mp-results-note {
+  padding: 28px 8px; text-align: center;
+  font-size: 10px; letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.4);
+}
+.mp-result {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 6px 8px;
+  border-radius: 10px; text-align: left;
+  color: rgba(255, 255, 255, 0.8);
+  transition: background 0.15s, color 0.15s;
+}
+.mp-result:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.mp-result-cover {
+  width: 34px; height: 34px; flex-shrink: 0;
+  border-radius: 6px; object-fit: cover;
+  filter: grayscale(1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.mp-result-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.mp-result-title {
+  font-size: 12px; line-height: 1.25;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mp-result-channel {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mp-result-play { color: rgba(255, 255, 255, 0.3); flex-shrink: 0; transition: color 0.15s; }
+.mp-result:hover .mp-result-play { color: #f0968a; }
+
+/* Equalizer overlay — same full-card shell as search; monochrome with the
+   single coral accent reserved for the Enhance-on state and the active preset. */
+.mp-eq {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(16, 16, 18, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: mp-card-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mp-eq-top { display: flex; align-items: center; gap: 8px; }
+.mp-eq-title {
+  flex: 1;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: rgba(255, 255, 255, 0.6);
+}
+.mp-eq-enhance {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  font-family: inherit;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.7);
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.mp-eq-enhance:hover { color: #fff; border-color: rgba(255, 255, 255, 0.24); }
+.mp-eq-enhance .mp-eq-enhance-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transition: background 0.2s;
+}
+.mp-eq-enhance.is-on {
+  color: #f0968a;
+  border-color: rgba(240, 150, 138, 0.5);
+  background: rgba(240, 150, 138, 0.08);
+}
+.mp-eq-enhance.is-on .mp-eq-enhance-dot { background: #f0968a; }
+
+.mp-eq-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.mp-eq-preset {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: transparent;
+  font-family: inherit;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.55);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.mp-eq-preset:hover { color: #fff; border-color: rgba(255, 255, 255, 0.22); }
+.mp-eq-preset.is-active {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* 5 vertical band sliders — Base UI Slider (ui/slider.tsx) with native
+   orientation=vertical. Skin: monochrome track (before: bg-input), white
+   indicator fill, white thumb with hairline border. The bands row gets a
+   FIXED height anchor (the .mp-card is auto-height, so a pure flex:1 chain
+   leaves the sliders at intrinsic size); the Root → Control → Track chain
+   then stretches inside it. */
+.mp-eq-bands {
+  height: 150px;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 6px 0 2px;
+}
+.mp-eq-band {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 100%;
+}
+.mp-eq-slider {
+  width: 100%;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* Base UI DOES set data-orientation on every part, so the vertical variants in
+   ui/slider.tsx fire — including min-h-[11rem] (demo-container sizing), taller
+   than this card's ~101px band cell. At equal specificity it beat the reset on
+   source order, so the Control overflowed the cell and dropped the track+thumb
+   below the value/label rows. Win with a higher-specificity reset: min
+   height/width 0 lets the flex chain (Root column → Control h-full → Track)
+   shrink to the 150px bands row and to the preamp's width. */
+.mp-eq .mp-eq-slider [data-slot="slider-control"] {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+}
+/* Center the 4px track in each band cell — the one axis Tailwind's vertical
+   variants (flex-col, h-full, w-1) don't set. Track sizing itself comes from
+   those variants, so neither the bands nor the preamp need an explicit rule. */
+.mp-eq-band .mp-eq-slider [data-slot="slider-control"] {
+  align-items: center;
+}
+/* The trough (before:) and the Indicator fill share bounds — the fill is
+   width/height:inherit anchored at 0 — so an explicit inset:0 paints the
+   trough edge-to-edge and keeps the fill aligned at 0% and 100%. */
+.mp-eq-slider [data-slot="slider-track"]::before { inset: 0; }
+.mp-eq-band-gain {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.75);
+  min-height: 11px;
+}
+.mp-eq-band-label {
+  font-size: 7.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+}
+
+.mp-eq-preamp {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+}
+.mp-eq-preamp .mp-eq-slider { flex: 1; }
+.mp-eq-preamp .mp-eq-band-gain { min-width: 44px; text-align: right; }
+
+.mp-eq-note {
+  font-size: 8.5px;
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.4);
+  padding: 6px 4px 0;
+}
+.mp-eq-note.is-on { color: #f0968a; }
+
+/* collapsed pill */
+.mp-pill {
+  display: flex; align-items: center; gap: 10px;
+  height: 44px;
+  padding: 0 14px 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(20, 20, 22, 0.55);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2), 0 10px 30px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.2s, background 0.2s;
+}
+.mp-pill:hover { border-color: rgba(255, 255, 255, 0.25); background: rgba(30, 30, 33, 0.6); }
+.mp-pill-cover {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  flex-shrink: 0;
+}
+.mp-pill-cover img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(1); }
+.mp-pill-cover.is-playing { animation: mp-spin 8s linear infinite; }
+.mp-pill-cover .mp-cover-empty { border-radius: 50%; width: 100%; height: 100%; }
+/* mini equalizer — CSS-driven bars in the collapsed pill (the full 10×10 mixer
+   only mounts when expanded) */
+.mp-mini-eq { display: flex; align-items: flex-end; gap: 2px; height: 14px; }
+.mp-mini-eq span { width: 2px; height: 30%; background: rgba(255, 255, 255, 0.55); border-radius: 1px; }
+.mp-mini-eq.is-playing span { animation: mp-eq 0.9s ease-in-out infinite; }
+
+@keyframes mp-spin { to { transform: rotate(360deg); } }
+@keyframes mp-eq { 0%, 100% { height: 20%; } 50% { height: 90%; } }
+@keyframes mp-card-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes mp-cover-in {
+  from { opacity: 0; transform: scale(1.08); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes mp-cover-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: scale(0.9); }
+}
+@keyframes mp-ti-in {
+  from { opacity: 0; transform: translateX(var(--dx, 14px)); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes mp-ti-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateX(var(--dx, -14px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mp-card { animation: none; }
+  .mp-cover.cover-enter, .mp-cover.cover-exit,
+  .mp-artist.ti-enter, .mp-track.ti-enter,
+  .mp-artist.ti-exit, .mp-track.ti-exit { animation: none; }
+  .mp-pill-cover.is-playing { animation: none; }
+  .mp-mini-eq.is-playing span { animation: none; height: 50%; }
 }

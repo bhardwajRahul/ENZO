@@ -253,12 +253,12 @@ function ServiceConnections() {
         onClick={() => setShowDetails(!showDetails)}
         className="w-full flex items-center justify-between"
       >
-        <div className="font-mono-display text-[9px] uppercase tracking-widest text-white/50">
+        <div className="font-mono-display text-[10px] uppercase tracking-widest text-white/50">
           Services
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">
-            <div className={`w-2 h-2 rounded-full ${connectedCount > 0 ? 'bg-emerald-400' : 'bg-white/20'}`} />
+            <div className={`w-2 h-2 rounded-full ${connectedCount > 0 ? 'bg-white/85' : 'bg-white/20'}`} />
             <span className="text-[10px] text-white/60">
               {connectedCount}/3
             </span>
@@ -291,13 +291,13 @@ function ServiceConnections() {
                 <span className="text-[11px] text-white/70">{service.label}</span>
               </div>
               {connections[service.id as keyof typeof connections] ? (
-                <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+                <span className="text-[10px] text-white/70 flex items-center gap-1">
                   Connected
                 </span>
               ) : (
                 <button
                   onClick={() => handleConnect(service.id as 'gmail' | 'calendar' | 'drive')}
-                  className="text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
+                  className="text-[10px] text-[#f0968a] hover:text-white transition-colors"
                 >
                   Connect
                 </button>
@@ -308,7 +308,7 @@ function ServiceConnections() {
           {connectedCount > 0 && (
             <button
               onClick={handleDisconnect}
-              className="w-full mt-2 py-1.5 text-[10px] text-rose-400/70 hover:text-rose-400 transition-colors border border-white/10 rounded-lg"
+              className="w-full mt-2 py-1.5 text-[10px] text-white/45 hover:text-[#c96b62] transition-colors border border-white/10 rounded-xl"
             >
               Disconnect All
             </button>
@@ -357,7 +357,7 @@ function ToggleSwitch({
       <span className="font-mono-display text-[10px] uppercase tracking-widest text-white/70">
         {label}
       </span>
-      <Switch checked={value} onChange={onChange} />
+      <Switch checked={value} onChange={onChange} aria-label={label} />
     </div>
   )
 }
@@ -483,18 +483,21 @@ function timeAgo(iso: string): string {
 }
 
 // Compact status/latency chip for a model card row.
+// Status is carried by weight, not hue — white reads healthy, coral reads
+// "needs attention", matching ModelCard (ui/model-card.tsx:216) and the
+// telemetry rows in App.tsx.
 function modelHealthChip(m: CatalogModel): { text: string; cls: string; title: string } | null {
   const h = m.health
   if (!h) return null
   switch (h.status) {
     case 'online':
-      return { text: formatLatency(h.latencyMs), cls: 'text-emerald-400', title: `online · checked ${timeAgo(h.checkedAt)}` }
+      return { text: formatLatency(h.latencyMs), cls: 'text-white/75', title: `online · checked ${timeAgo(h.checkedAt)}` }
     case 'degraded':
-      return { text: `SLOW ${formatLatency(h.latencyMs)}`, cls: 'text-amber-400', title: `degraded (${h.latencyMs}ms) · checked ${timeAgo(h.checkedAt)}` }
+      return { text: `SLOW ${formatLatency(h.latencyMs)}`, cls: 'text-[#f0968a]', title: `degraded (${h.latencyMs}ms) · checked ${timeAgo(h.checkedAt)}` }
     case 'offline':
-      return { text: 'OFFLINE', cls: 'text-red-400', title: `offline (${h.error || 'unreachable'}) · checked ${timeAgo(h.checkedAt)}` }
+      return { text: 'OFFLINE', cls: 'text-[#c96b62]', title: `offline (${h.error || 'unreachable'}) · checked ${timeAgo(h.checkedAt)}` }
     case 'n/a':
-      return { text: 'N/A', cls: 'text-white/25', title: 'not probed (image generation)' }
+      return { text: 'N/A', cls: 'text-white/35', title: 'not probed (image generation)' }
     default:
       return null
   }
@@ -597,7 +600,7 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
           href={match[5]}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[#34d399] underline underline-offset-2 hover:text-[#6ee7b7] transition-colors"
+          className="text-white underline decoration-white/30 underline-offset-2 hover:decoration-white transition-colors"
         >
           {match[5]}
         </a>
@@ -607,7 +610,7 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
         <a
           key={keyIdx++}
           href={`mailto:${match[6]}`}
-          className="text-[#34d399] underline underline-offset-2 hover:text-[#6ee7b7] transition-colors"
+          className="text-white underline decoration-white/30 underline-offset-2 hover:decoration-white transition-colors"
         >
           {match[6]}
         </a>
@@ -3023,12 +3026,12 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
-              className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md rounded-2xl border-2 border-dashed border-emerald-400/50 flex flex-col items-center justify-center p-6 text-center pointer-events-none shadow-[inset_0_0_50px_rgba(52,211,153,0.15)]"
+              className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md rounded-2xl border-2 border-dashed border-white/30 flex flex-col items-center justify-center p-6 text-center pointer-events-none"
             >
-              <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mb-3 text-emerald-400 animate-bounce">
+              <div className="w-14 h-14 rounded-2xl bg-white/[0.06] border border-white/15 flex items-center justify-center mb-3 text-white/70 animate-bounce">
                 <Paperclip size={28} />
               </div>
-              <p className="text-emerald-300 font-mono text-sm font-bold tracking-wider">DROP FILES TO ATTACH</p>
+              <p className="text-white/85 font-mono text-sm font-bold tracking-wider">DROP FILES TO ATTACH</p>
               <p className="text-white/60 font-sans text-xs mt-1">Code, text, documents, or images</p>
             </motion.div>
           )}
@@ -3039,16 +3042,31 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
 
     </>)
 
+    // Health of the model the chip anchors on. Hue-free, same mapping as
+    // ModelCard's status dot (ui/model-card.tsx:216).
+    const activeHealth = modelHealthChip(activeModel)
+    const activeHealthDot =
+      activeModel.health?.status === 'online' ? 'bg-white/85'
+      : activeModel.health?.status === 'degraded' ? 'bg-[#f0968a]'
+      : activeModel.health?.status === 'offline' ? 'bg-[#c96b62]'
+      : 'bg-white/25'
+
     const terminalHeader = (<>
-        {/* ─── Header Chrome ─────────────────────────────────────────── */}
-        <div className="relative z-10 flex items-center justify-between px-5 py-3 border-b border-white/[0.06] bg-black/30 backdrop-blur-md">
-          <div className="flex gap-1.5 items-center">
+        {/* ─── Header Chrome ─────────────────────────────────────────────
+            One bar, one anchor: the model chip is the brightest thing here
+            because it is the only part that changes what the terminal does.
+            The window controls and the shell prefix sit under it, the actions
+            sit behind a hairline. Controls stay functional — they just lost
+            the traffic-light paint. */}
+        <div className="relative z-10 flex items-center gap-4 px-5 py-2.5 border-b border-white/[0.06] bg-black/30 backdrop-blur-md">
+          <div className="flex gap-1.5 items-center shrink-0">
             <button
               onClick={() => { setTermMaximized(false); setTermMinimized(false) }}
               title="Restore window"
-              className="group w-3 h-3 rounded-full bg-red-500/80 hover:bg-red-400 transition-all cursor-pointer shadow-[0_0_6px_rgba(239,68,68,0.5)] flex items-center justify-center"
+              aria-label="Restore window"
+              className="group w-3 h-3 rounded-full bg-white/15 hover:bg-white/35 transition-colors cursor-pointer flex items-center justify-center"
             >
-              <X size={7} strokeWidth={3.5} className="text-red-950 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <X size={7} strokeWidth={3.5} className="text-black/80 opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
             <button
               onClick={() => {
@@ -3056,50 +3074,61 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                 else setTermMinimized((v) => !v)
               }}
               title={termMinimized ? 'Restore' : 'Minimize'}
-              className="group w-3 h-3 rounded-full bg-yellow-500/80 hover:bg-yellow-400 transition-all cursor-pointer shadow-[0_0_6px_rgba(234,179,8,0.5)] flex items-center justify-center"
+              aria-label={termMinimized ? 'Restore' : 'Minimize'}
+              className="group w-3 h-3 rounded-full bg-white/15 hover:bg-white/35 transition-colors cursor-pointer flex items-center justify-center"
             >
-              <Minus size={7} strokeWidth={3.5} className="text-yellow-950 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <Minus size={7} strokeWidth={3.5} className="text-black/80 opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
             <button
               onClick={() => { setTermMaximized((v) => !v); setTermMinimized(false) }}
               title={termMaximized ? 'Restore' : 'Maximize'}
-              className="group w-3 h-3 rounded-full bg-green-500/80 hover:bg-green-400 transition-all cursor-pointer shadow-[0_0_6px_rgba(34,197,94,0.5)] flex items-center justify-center"
+              aria-label={termMaximized ? 'Restore' : 'Maximize'}
+              className="group w-3 h-3 rounded-full bg-white/15 hover:bg-white/35 transition-colors cursor-pointer flex items-center justify-center"
             >
-              <Square size={6} strokeWidth={3.5} className="text-green-950 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <Square size={6} strokeWidth={3.5} className="text-black/80 opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono text-white/40">enzo@matrix:~$</span>
-            <span className="text-[9px] px-2 py-0.5 rounded-full bg-white/[0.06] text-white/50 border border-white/[0.10] font-mono">
-              {activeModel.name}
+
+          <span className="hidden md:inline font-mono text-[11px] text-white/35 shrink-0">enzo@matrix:~$</span>
+
+          <div className="flex min-w-0 flex-1 items-center">
+            <span
+              className="flex min-w-0 items-center gap-2 rounded-full border border-white/[0.14] bg-white/[0.07] px-2.5 py-1 font-mono text-[11px] text-white/85"
+              title={activeHealth?.title}
+            >
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${activeHealthDot}`} />
+              <span className="truncate">{activeModel.name}</span>
             </span>
           </div>
-          <div className="flex items-center gap-3 text-[10px] font-mono">
+
+          <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={startNewChat}
               title="Start a new chat with the current model"
-              className="text-white/40 hover:text-white/80 flex items-center gap-1 cursor-pointer transition-colors"
+              className="flex items-center gap-1.5 rounded-full px-2 py-1 font-mono text-[11px] text-white/45 hover:text-white hover:bg-white/[0.06] cursor-pointer transition-colors"
             >
-              <Plus size={12} />
-              <span className="hidden sm:inline">New chat</span>
+              <Plus size={13} />
+              <span className="hidden sm:inline">New</span>
             </button>
             <button
               onClick={() => setShowHistoryDrawer(!showHistoryDrawer)}
-              className="text-white/40 hover:text-white/80 flex items-center gap-1 cursor-pointer transition-colors"
+              title="Previous sessions"
+              className="flex items-center gap-1.5 rounded-full px-2 py-1 font-mono text-[11px] text-white/45 hover:text-white hover:bg-white/[0.06] cursor-pointer transition-colors"
             >
-              <History size={12} />
+              <History size={13} />
               <span className="hidden sm:inline">Sessions</span>
             </button>
             <button
               onClick={() => (showProjectsDrawer ? setShowProjectsDrawer(false) : openProjectsDrawer())}
-              className="text-white/40 hover:text-white/80 flex items-center gap-1 cursor-pointer transition-colors"
+              title="Projects"
+              className="flex items-center gap-1.5 rounded-full px-2 py-1 font-mono text-[11px] text-white/45 hover:text-white hover:bg-white/[0.06] cursor-pointer transition-colors"
             >
-              <FolderOpen size={12} />
+              <FolderOpen size={13} />
               <span className="hidden sm:inline">Projects</span>
             </button>
-            <div className="flex items-center gap-1">
-              {/* Live system pulse — ECG heartbeat beside the status text,
-                  flatline label the moment backend or catalog stops answering. */}
+            {/* Live system pulse — ECG heartbeat beside the status text,
+                flatline label the moment backend or catalog stops answering. */}
+            <div className="ml-1 flex items-center border-l border-white/[0.08] pl-2.5">
               <SystemPulse />
             </div>
           </div>
@@ -3127,32 +3156,32 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
               <div className="grid grid-cols-2 gap-1 my-2 p-1 bg-white/5 rounded-xl border border-white/10 text-[10px]">
                 <button
                   onClick={() => setHistoryTab('text')}
-                  className={`py-1.5 rounded-lg font-bold capitalize transition-all cursor-pointer ${historyTab === 'text' ? 'bg-white/10 text-white border border-white/20' : 'text-white/40 hover:text-white'}`}
+                  className={`py-1.5 rounded-xl font-bold capitalize transition-all cursor-pointer ${historyTab === 'text' ? 'bg-white/10 text-white border border-white/20' : 'text-white/40 hover:text-white'}`}
                 >
                   Text Chats
                 </button>
                 <button
                   onClick={() => setHistoryTab('image')}
-                  className={`py-1.5 rounded-lg font-bold capitalize transition-all cursor-pointer ${historyTab === 'image' ? 'bg-white/10 text-white border border-white/20' : 'text-white/40 hover:text-white'}`}
+                  className={`py-1.5 rounded-xl font-bold capitalize transition-all cursor-pointer ${historyTab === 'image' ? 'bg-white/10 text-white border border-white/20' : 'text-white/40 hover:text-white'}`}
                 >
                   Image Gens
                 </button>
               </div>
 
               <div className="relative mb-2">
-                <Search size={11} className="absolute left-2.5 top-2.5 text-white/30" />
+                <Search size={11} className="absolute left-2.5 top-2.5 text-white/45" />
                 <input
                   type="text"
                   placeholder="Search sessions…"
                   value={historySearch}
                   onChange={(e) => setHistorySearch(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-7 pr-3 py-1.5 text-[11px] text-white placeholder:text-white/25 focus:outline-none focus:border-white/25 font-mono transition-colors"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-7 pr-3 py-1.5 text-[11px] text-white placeholder:text-white/40 focus:outline-none focus:border-white/25 font-mono transition-colors"
                 />
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-1 scrollbar-thin">
                 {filteredSessions.length === 0 ? (
-                  <div className="text-center py-6 text-[11px] text-white/30 font-mono">No sessions recorded.</div>
+                  <div className="text-center py-6 text-[11px] text-white/50 font-mono">No sessions recorded.</div>
                 ) : (
                   filteredSessions.map((s) => (
                     <motion.div
@@ -3173,14 +3202,14 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                     >
                       <div className="truncate pr-2">
                         <div className="text-[11px] font-semibold truncate">{s.title}</div>
-                        <div className="text-[9px] text-white/35 font-mono">{s.model}</div>
+                        <div className="text-[10px] text-white/35 font-mono">{s.model}</div>
                       </div>
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
                           setSessions((prev) => prev.filter((sess) => sess.id !== s.id))
                         }}
-                        className="opacity-0 group-hover:opacity-100 text-white/30 hover:text-rose-400 p-1 transition-all"
+                        className="opacity-0 group-hover:opacity-100 text-white/40 hover:text-[#c96b62] p-1 transition-all"
                       >
                         <Trash2 size={11} />
                       </button>
@@ -3211,19 +3240,19 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
 
               <div className="flex-1 overflow-y-auto mt-2 space-y-2 pr-1">
                 {projectList.length === 0 && (
-                  <div className="text-center py-10 text-[11px] text-white/30 font-mono">
+                  <div className="text-center py-10 text-[11px] text-white/50 font-mono">
                     No projects yet.<br />Build something in coding mode.
                   </div>
                 )}
                 {projectList.map((task) => (
                   <div key={task.id} className="rounded-xl border border-white/10 bg-white/5 p-2.5 hover:border-white/20 transition-colors">
                     <div className="flex items-start gap-2">
-                      <div className={`mt-0.5 shrink-0 rounded-md p-1.5 ${task.kind === 'project' ? 'bg-emerald-400/10 text-emerald-300' : 'bg-sky-400/10 text-sky-300'}`}>
+                      <div className="mt-0.5 shrink-0 rounded-full bg-white/[0.08] p-1.5 text-white/70">
                         {task.kind === 'project' ? <FolderOpen size={12} /> : <Eye size={12} />}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="text-[11px] font-semibold text-white/85 truncate">{task.title || 'Untitled'}</div>
-                        <div className="text-[9px] font-mono text-white/35 uppercase tracking-wider">
+                        <div className="text-[10px] font-mono text-white/35 uppercase tracking-wider">
                           {task.kind} · {Object.keys(task.files || {}).length} files · {new Date(task.updatedAt || task.createdAt).toLocaleDateString()}
                         </div>
                       </div>
@@ -3232,7 +3261,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                       <button
                         onClick={() => openProjectTab(task)}
                         title={task.kind === 'project' ? 'Open / run in a full browser tab (sandboxed)' : 'Open in a full browser tab'}
-                        className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 py-1.5 text-[9px] font-semibold text-white/80 cursor-pointer transition-colors"
+                        className="flex-1 flex items-center justify-center gap-1 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 py-1.5 text-[10px] font-semibold text-white/80 cursor-pointer transition-colors"
                       >
                         {task.kind === 'project' ? <Play size={10} /> : <ExternalLink size={10} />}
                         {task.kind === 'project' ? 'Open / Run' : 'Open'}
@@ -3240,21 +3269,21 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                       <button
                         onClick={() => downloadTaskZip(task)}
                         title="Download all files as a .zip"
-                        className="flex items-center justify-center gap-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 px-2 py-1.5 text-[9px] font-semibold text-white/80 cursor-pointer transition-colors"
+                        className="flex items-center justify-center gap-1 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 px-2 py-1.5 text-[10px] font-semibold text-white/80 cursor-pointer transition-colors"
                       >
                         <Download size={10} />
                       </button>
                       <button
                         onClick={() => deleteProject(task)}
                         title="Delete this project"
-                        className="flex items-center justify-center rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 px-2 py-1.5 text-[9px] text-red-300/90 cursor-pointer transition-colors"
+                        className="flex items-center justify-center rounded-xl bg-white/[0.04] hover:bg-[#c96b62]/15 border border-white/10 hover:border-[#c96b62]/35 px-2 py-1.5 text-[10px] text-white/45 hover:text-[#c96b62] cursor-pointer transition-colors"
                       >
                         <Trash2 size={10} />
                       </button>
                       <button
                         onClick={() => startEditingTask(task)}
                         title="Edit this project — the next coding request will change its real files"
-                        className="flex items-center justify-center rounded-lg bg-emerald-400/10 hover:bg-emerald-400/20 border border-emerald-400/25 px-2 py-1.5 text-[9px] text-emerald-300/90 cursor-pointer transition-colors"
+                        className="flex items-center justify-center rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/15 px-2 py-1.5 text-[10px] text-white/75 hover:text-white cursor-pointer transition-colors"
                       >
                         <Pencil size={10} />
                         Edit
@@ -3281,7 +3310,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                 <span className="text-xs font-bold text-white/60 tracking-wider font-mono flex items-center gap-2">
                   ACTIVE SKILLS
                   {skillsList.length > 0 && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.10] text-white/80 border border-white/15">
                       {skillsList.length}
                     </span>
                   )}
@@ -3291,7 +3320,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                     onClick={importAwesomeSkills}
                     disabled={skillsImporting}
                     title="Import bundled skills from ComposioHQ/awesome-claude-skills (Claude Code SKILL.md modules)"
-                    className="text-white/40 hover:text-violet-300 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-wait p-1 flex items-center gap-1 text-[9px] font-mono uppercase tracking-wider"
+                    className="text-white/50 hover:text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-wait p-1 flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider"
                   >
                     <Download size={11} className={skillsImporting ? 'animate-pulse' : ''} />
                     {skillsImporting ? 'Importing…' : 'Import'}
@@ -3316,11 +3345,11 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
 
               <div className="flex-1 overflow-y-auto space-y-1.5 scrollbar-thin mt-2">
                 {skillsLoading ? (
-                  <div className="text-center py-6 text-[11px] text-white/30 font-mono animate-pulse">Scanning learned skills…</div>
+                  <div className="text-center py-6 text-[11px] text-white/50 font-mono animate-pulse">Scanning learned skills…</div>
                 ) : skillsError ? (
-                  <div className="text-center py-6 text-[11px] text-rose-300/80 font-mono px-4">{skillsError}</div>
+                  <div className="text-center py-6 text-[11px] text-[#c96b62] font-mono px-4">{skillsError}</div>
                 ) : skillsList.length === 0 ? (
-                  <div className="text-center py-6 text-[11px] text-white/30 font-mono px-4">
+                  <div className="text-center py-6 text-[11px] text-white/50 font-mono px-4">
                     No learned skills yet.
                     <br />
                     <span className="text-white/40">Use Import ↑ to grab the bundled Claude Code skills, or try: /learn https://github.com/owner/repo</span>
@@ -3335,12 +3364,12 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
                           <div className="text-[12px] font-semibold text-white truncate">{s.name}</div>
-                          <div className="text-[9px] text-white/35 font-mono truncate">{s.sourceUrl}</div>
+                          <div className="text-[10px] text-white/35 font-mono truncate">{s.sourceUrl}</div>
                         </div>
                         <button
                           onClick={() => unlearnSkill(s.id)}
                           title="Unlearn skill"
-                          className="opacity-0 group-hover:opacity-100 text-white/30 hover:text-rose-400 p-1 transition-all shrink-0 cursor-pointer"
+                          className="opacity-0 group-hover:opacity-100 text-white/40 hover:text-[#c96b62] p-1 transition-all shrink-0 cursor-pointer"
                         >
                           <Trash2 size={12} />
                         </button>
@@ -3349,7 +3378,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                       {s.keywords.length > 0 && (
                         <div className="mt-1.5 flex flex-wrap gap-1">
                           {s.keywords.slice(0, 6).map((k) => (
-                            <span key={k} className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-white/40 font-mono uppercase tracking-wider">
+                            <span key={k} className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-white/40 font-mono uppercase tracking-wider">
                               {k}
                             </span>
                           ))}
@@ -3369,25 +3398,35 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
           className="relative z-10 flex-1 overflow-y-auto px-6 py-6 space-y-6 scrollbar-thin"
           style={{ minHeight: 220 }}
         >
-          {/* Empty state */}
+          {/* Empty state. ponytail: the caret is the whole mark — it's the
+              terminal's own idle signal (reuses .welcome-cursor) and says
+              "waiting on you" without a decorative icon tile doing it for us.
+              Copy names the model and stops; the quick-action chips below are
+              visible, so narrating them was filler. */}
           {messages.length === 0 && !isStreaming && (
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="flex flex-col items-center justify-center h-full py-16 text-center select-none"
+              className="flex h-full flex-col items-center justify-center px-6 text-center select-none"
             >
-              <div className="w-12 h-12 rounded-2xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center mb-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-                <Zap size={20} className="text-white/30" />
-              </div>
-              <p className="text-white/30 text-sm font-sans">Ask anything. Enzo is ready.</p>
-              <p className="text-white/15 text-xs mt-1 font-sans">Use the quick actions below to get started.</p>
-              <button
-                onClick={() => setShowHistoryDrawer(true)}
-                className="mt-4 font-mono-display text-[9px] uppercase tracking-widest text-white/35 hover:text-white/80 transition-colors underline underline-offset-4 decoration-white/10 hover:decoration-white/30 cursor-pointer"
-              >
-                View previous sessions
-              </button>
+              <p className="font-sans text-[17px] leading-snug tracking-[-0.01em] text-white/85">
+                Ask anything<span className="welcome-cursor" />
+              </p>
+              <p className="mt-2 font-sans text-[13px] text-white/45">
+                Answering with <span className="text-white/70">{activeModel.name}</span>
+              </p>
+              {sessions.length > 0 && (
+                <button
+                  onClick={() => setShowHistoryDrawer(true)}
+                  className="mt-6 flex cursor-pointer items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 font-sans text-[11px] text-white/45 transition-all hover:border-white/[0.15] hover:bg-white/[0.06] hover:text-white/75"
+                >
+                  <History size={12} />
+                  <span>
+                    {sessions.length} previous {sessions.length === 1 ? 'session' : 'sessions'}
+                  </span>
+                </button>
+              )}
             </motion.div>
           )}
 
@@ -3405,7 +3444,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                     <div className="max-w-[78%] bg-white/[0.06] backdrop-blur-sm border border-white/[0.09] rounded-2xl rounded-br-md px-4 py-3 text-white/90 text-[14px] leading-[1.65] font-sans tracking-[-0.01em]">
                       {m.text}
                     </div>
-                    <div className="w-6 h-6 rounded-full bg-white/10 border border-white/15 flex items-center justify-center text-[9px] text-white/50 font-semibold shrink-0 mb-0.5 select-none">
+                    <div className="w-6 h-6 rounded-full bg-white/10 border border-white/15 flex items-center justify-center text-[10px] text-white/50 font-semibold shrink-0 mb-0.5 select-none">
                       Y
                     </div>
                   </div>
@@ -3441,7 +3480,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                       {m.role === 'assistant' && m.reasoning && (
                         <div className="mt-3 border border-white/10 rounded-xl bg-white/[0.02] overflow-hidden max-w-xl">
                           <details className="group">
-                            <summary className="flex items-center justify-between px-4 py-2.5 font-mono-display text-[9px] uppercase tracking-widest text-white/40 hover:text-white cursor-pointer select-none border-b border-transparent group-open:border-white/10 transition-colors">
+                            <summary className="flex items-center justify-between px-4 py-2.5 font-mono-display text-[10px] uppercase tracking-widest text-white/40 hover:text-white cursor-pointer select-none border-b border-transparent group-open:border-white/10 transition-colors">
                               <span>View Reasoning Chain</span>
                               <ChevronDown size={10} className="transform transition-transform group-open:rotate-180" />
                             </summary>
@@ -3454,7 +3493,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                       {m.role === 'assistant' && !isResearchMessage(m) && m.researchSteps && m.researchSteps.length > 0 && (
                         <div className="mt-3 border border-white/10 rounded-xl bg-white/[0.02] overflow-hidden max-w-xl">
                           <details className="group">
-                            <summary className="flex items-center justify-between px-4 py-2.5 font-mono-display text-[9px] uppercase tracking-widest text-white/40 hover:text-white cursor-pointer select-none border-b border-transparent group-open:border-white/10 transition-colors">
+                            <summary className="flex items-center justify-between px-4 py-2.5 font-mono-display text-[10px] uppercase tracking-widest text-white/40 hover:text-white cursor-pointer select-none border-b border-transparent group-open:border-white/10 transition-colors">
                               <span>View Research Sources & Process ({m.researchSteps.length})</span>
                               <ChevronDown size={10} className="transform transition-transform group-open:rotate-180" />
                             </summary>
@@ -3466,14 +3505,14 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                                 const isWebResult = step.startsWith('📄') || step.startsWith('🌐') || (headLine.includes('[') && headLine.includes(']('))
                                 
                                 return (
-                                  <div key={idx} className={`text-xs font-mono break-all whitespace-pre-wrap ${isSynthesizing ? 'text-white/60' : isWebResult ? 'text-white/80' : 'text-white/30'}`}>
+                                  <div key={idx} className={`text-xs font-mono break-all whitespace-pre-wrap ${isSynthesizing ? 'text-white/60' : isWebResult ? 'text-white/80' : 'text-white/50'}`}>
                                     <span className="mr-2">{isSynthesizing ? '⚙' : isSource ? '🔍' : isWebResult ? '📄' : '✓'}</span>
                                     {isSource && urlLine ? (
                                       <>
                                         <span className="text-white/70 underline hover:text-white hover:underline cursor-pointer" onClick={() => navigator.clipboard.writeText(urlLine)} title="Click to copy URL">
                                           {headLine}
                                         </span>
-                                        <a href={urlLine} target="_blank" rel="noopener noreferrer" className="ml-2 text-[10px] text-white/30 hover:text-white/60 no-underline hover:underline" title="Open in new tab">
+                                        <a href={urlLine} target="_blank" rel="noopener noreferrer" className="ml-2 text-[10px] text-white/45 hover:text-white/80 no-underline hover:underline" title="Open in new tab">
                                           ↗
                                         </a>
                                       </>
@@ -3481,13 +3520,13 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                                       headLine
                                     )}
                                     {isSource && urlLine && (
-                                      <div className="ml-6 flex items-center gap-2 text-[10px] text-white/20">
+                                      <div className="ml-6 flex items-center gap-2 text-[10px] text-white/45">
                                         <a href={urlLine} target="_blank" rel="noopener noreferrer" className="hover:text-white/60 underline break-all">
                                           {urlLine}
                                         </a>
                                         <button
                                           onClick={() => navigator.clipboard.writeText(urlLine)}
-                                          className="text-white/20 hover:text-white/50 cursor-pointer"
+                                          className="text-white/45 hover:text-white/80 cursor-pointer"
                                           title="Copy URL"
                                         >
                                           <Copy size={9} />
@@ -3508,7 +3547,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                             <button
                               onClick={() => handleDownloadPDF(m.text, i)}
                               disabled={downloadingPDF === i}
-                              className="flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 font-mono-display text-[9px] uppercase tracking-widest text-white/40 hover:text-white hover:border-white/20 transition-all bg-white/[0.01] disabled:opacity-50 cursor-pointer"
+                              className="flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 font-mono-display text-[10px] uppercase tracking-widest text-white/40 hover:text-white hover:border-white/20 transition-all bg-white/[0.01] disabled:opacity-50 cursor-pointer"
                             >
                               <Download size={10} />
                               <span>{downloadingPDF === i ? 'Generating PDF…' : 'Download PDF'}</span>
@@ -3516,7 +3555,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                           )}
                           <button
                             onClick={() => navigator.clipboard.writeText(m.text).then(() => { /* copied */ })}
-                            className="flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 font-mono-display text-[9px] uppercase tracking-widest text-white/40 hover:text-white hover:border-white/20 transition-all bg-white/[0.01] cursor-pointer"
+                            className="flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 font-mono-display text-[10px] uppercase tracking-widest text-white/40 hover:text-white hover:border-white/20 transition-all bg-white/[0.01] cursor-pointer"
                           >
                             <Copy size={10} />
                             <span>Copy</span>
@@ -3532,11 +3571,11 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                           <button
                             type="button"
                             onClick={() => handlePreviewMessage(m.text)}
-                            className="flex items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1.5 font-mono-display text-[9px] uppercase tracking-widest text-emerald-300/90 hover:text-white hover:border-emerald-400/50 hover:bg-emerald-400/20 transition-all cursor-pointer"
+                            className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5 font-mono-display text-[10px] uppercase tracking-widest text-white/70 hover:text-white hover:border-white/30 hover:bg-white/[0.12] transition-all cursor-pointer"
                           >
                             <Eye size={10} />
                             <span>Preview</span>
-                            <ExternalLink size={9} className="opacity-70" />
+                            <ExternalLink size={10} className="opacity-70" />
                           </button>
                         </div>
                       )}
@@ -3564,12 +3603,12 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                 <motion.span
                   animate={{ rotate: ledgerOpen ? 90 : 0 }}
                   transition={{ duration: 0.15 }}
-                  className="text-white/30 group-hover:text-white/60 flex items-center"
+                  className="text-white/45 group-hover:text-white/80 flex items-center"
                 >
                   <ChevronDown size={11} />
                 </motion.span>
                 {isStreaming ? (
-                  <TextShimmer duration={1.3} className="text-[10px] font-mono uppercase tracking-widest [--base-color:#8b8b8b] [--base-gradient-color:#a855f7] dark:[--base-color:#8b8b8b] dark:[--base-gradient-color:#a855f7]">
+                  <TextShimmer duration={1.3} className="text-[10px] font-mono uppercase tracking-widest [--base-color:#8b8b8b] [--base-gradient-color:#ffffff] dark:[--base-color:#8b8b8b] dark:[--base-gradient-color:#ffffff]">
                     Working…
                   </TextShimmer>
                 ) : (
@@ -3594,7 +3633,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                         headLine
                       )}
                       {isSource && urlLine && (
-                        <div className="ml-6 text-[10px] text-white/25 truncate">{urlLine}</div>
+                        <div className="ml-6 text-[10px] text-white/45 truncate">{urlLine}</div>
                       )}
                     </div>
                   )
@@ -3606,8 +3645,8 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
           {thoughtChain && (
             <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="ml-10 border border-white/[0.06] rounded-xl bg-white/[0.02] p-4 text-xs text-white/35 font-mono space-y-1">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[9px] uppercase tracking-widest text-white/50 font-bold">Reasoning Chain</span>
-                <TextShimmer duration={1.5} className="text-[10px] font-mono [--base-color:#71717a] [--base-gradient-color:#8b5cf6] dark:[--base-color:#71717a] dark:[--base-gradient-color:#8b5cf6]">Processing…</TextShimmer>
+                <span className="text-[10px] uppercase tracking-widest text-white/50 font-bold">Reasoning Chain</span>
+                <TextShimmer duration={1.5} className="text-[10px] font-mono [--base-color:#71717a] [--base-gradient-color:#ffffff] dark:[--base-color:#71717a] dark:[--base-gradient-color:#ffffff]">Processing…</TextShimmer>
               </div>
               <pre className="whitespace-pre-wrap">{thoughtChain}</pre>
             </motion.div>
@@ -3633,7 +3672,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                     <>
                       {renderMessageContent(streamedText)}
                       <motion.span
-                        className="inline-block w-[1.5px] h-[15px] bg-emerald-400/80 ml-[2px] align-middle rounded-full"
+                        className="inline-block w-[1.5px] h-[15px] bg-white/80 ml-[2px] align-middle rounded-full"
                         animate={{ opacity: [1, 0] }}
                         transition={{ duration: 0.55, repeat: Infinity, ease: 'easeInOut' }}
                       />
@@ -3655,11 +3694,11 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
               transition={{ duration: 0.2 }}
               className="flex items-start gap-3"
             >
-              <div className="w-6 h-6 rounded-full bg-amber-400/10 border border-amber-400/30 flex items-center justify-center shrink-0 mt-1">
-                <Zap size={11} className="text-amber-300/90" />
+              <div className="w-6 h-6 rounded-full bg-[#f0968a]/10 border border-[#f0968a]/30 flex items-center justify-center shrink-0 mt-1">
+                <Zap size={11} className="text-[#f0968a]" />
               </div>
               <div className="flex flex-col gap-0.5 max-w-[86%]">
-                <div className="flex items-center gap-2 text-[11px] font-mono text-amber-300/90">
+                <div className="flex items-center gap-2 text-[11px] font-mono text-[#f0968a]">
                   <span className="inline-flex items-center gap-1.5">
                     <RefreshCw size={11} className="animate-spin [animation-duration:1.2s]" />
                     {retryInfo.status === 'pacing'
@@ -3667,10 +3706,10 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                       : `${retryInfo.provider} rate-limited — auto-retrying in ~${Math.max(0, retryInfo.etaSec)}s`}
                   </span>
                   {retryInfo.cycle > 1 && (
-                    <span className="text-[9px] text-white/30">(attempt {retryInfo.cycle})</span>
+                    <span className="text-[10px] text-white/45">(attempt {retryInfo.cycle})</span>
                   )}
                 </div>
-                <div className="text-[10px] text-white/40 font-sans">
+                <div className="text-[11px] text-white/55 font-sans">
                   {retryInfo.status === 'pacing'
                     ? 'Waiting out the provider per-minute limit so the build is not cut off — resumes automatically, keep this tab open.'
                     : 'The build resumes automatically from where it stopped. Keep this tab open.'}
@@ -3702,11 +3741,11 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                   ))}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-white/25 font-sans">
+                  <span className="text-[11px] text-white/45 font-sans">
                     {autoContinuing ? `Auto-continuing build (${autoContinueCountRef.current}/${MAX_AUTO_CONTINUE})…` : isImageActive ? 'Generating image…' : (autoRoutedMode ?? chatMode) === 'research' ? 'Researching…' : (autoRoutedMode ?? chatMode) === 'thinking' ? 'Thinking…' : (autoRoutedMode ?? chatMode) === 'coding' ? 'Writing code…' : 'Thinking…'}
                   </span>
                   {autoRoutedMode && autoRoutedMode !== 'normal' && (
-                    <span className="text-[9px] font-mono uppercase tracking-widest text-emerald-300/90 bg-emerald-400/10 border border-emerald-400/25 rounded-full px-2 py-0.5">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/70 bg-white/[0.07] border border-white/15 rounded-full px-2 py-0.5">
                       auto → {autoRoutedMode}
                     </span>
                   )}
@@ -3728,8 +3767,8 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
               <div className="max-w-[86%] text-white/80 text-[14px] leading-[1.7] font-sans tracking-[-0.01em] w-full">
                 {autoRoutedMode && autoRoutedMode !== 'normal' && (
                   <div className="mb-1.5">
-                    <span className="inline-flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest text-emerald-300/90 bg-emerald-400/10 border border-emerald-400/25 rounded-full px-2 py-0.5">
-                      <Zap size={9} />
+                    <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-white/70 bg-white/[0.07] border border-white/15 rounded-full px-2 py-0.5">
+                      <Zap size={10} />
                       auto-routed → {autoRoutedMode}
                     </span>
                   </div>
@@ -3757,11 +3796,11 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                   initial={{ opacity: 0, y: -6 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
-                  className="flex items-center justify-between gap-3 px-4 pt-2 pb-2 border-b border-emerald-400/15 bg-emerald-400/[0.04] rounded-t-2xl"
+                  className="flex items-center justify-between gap-3 px-4 pt-2 pb-2 border-b border-white/[0.10] bg-white/[0.04] rounded-t-2xl"
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <Pencil size={12} className="text-emerald-300 shrink-0" />
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-200/90 truncate">
+                    <Pencil size={12} className="text-white/70 shrink-0" />
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/70 truncate">
                       Editing: {editNotice.title}
                     </span>
                   </div>
@@ -3803,7 +3842,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                         )}
                         <div className="flex flex-col min-w-0 max-w-[140px]">
                           <span className="truncate text-[11px] font-mono font-medium leading-tight">{file.name}</span>
-                          <span className="text-[9px] font-mono text-white/40">{formatFileSize(file.size)}</span>
+                          <span className="text-[10px] font-mono text-white/40">{formatFileSize(file.size)}</span>
                         </div>
                         <button
                           type="button"
@@ -3838,7 +3877,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                   disabled={isStreaming}
                   placeholder={isStreaming ? 'Generating response…' : 'Ask Enzo anything or drag & drop files…'}
                   data-tour-step="terminal-input"
-                  className="flex-1 bg-transparent outline-none text-white/90 text-[14px] leading-[1.6] font-sans tracking-[-0.01em] placeholder:text-white/25 caret-white resize-none min-w-0 py-0.5 scrollbar-none"
+                  className="flex-1 bg-transparent outline-none text-white/90 text-[14px] leading-[1.6] font-sans tracking-[-0.01em] placeholder:text-white/40 caret-white resize-none min-w-0 py-0.5 scrollbar-none"
                   style={{ height: 28, overflow: 'hidden' }}
                   autoFocus
                   spellCheck={false}
@@ -3859,9 +3898,9 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                     whileTap={{ scale: isStreaming ? 1 : 0.92 }}
                     className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-xl mt-0 transition-all ${
                       voice.isListening
-                        ? 'bg-red-500/90 text-white shadow-[0_0_16px_rgba(239,68,68,0.5)] animate-pulse'
+                        ? 'bg-[#f0968a] text-black animate-pulse'
                         : isStreaming
-                        ? 'bg-white/[0.06] text-white/20 cursor-not-allowed'
+                        ? 'bg-white/[0.06] text-white/30 cursor-not-allowed'
                         : 'bg-white/[0.06] text-white/60 hover:bg-white/[0.10] hover:text-white cursor-pointer'
                     }`}
                     aria-label={voice.isListening ? 'Stop dictation' : 'Start dictation'}
@@ -3883,10 +3922,10 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                   aria-label={isStreaming ? 'Stop generating' : 'Send message'}
                   className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-xl mt-0 transition-all ${
                     isStreaming
-                      ? 'bg-red-500/90 text-white hover:bg-red-500 shadow-[0_0_16px_rgba(239,68,68,0.4)] cursor-pointer'
+                      ? 'bg-[#f0968a] text-black hover:bg-[#f0968a]/85 cursor-pointer'
                       : (inputValue.trim() || attachedFiles.length > 0)
                       ? 'bg-white text-black hover:bg-white/90 cursor-pointer shadow-[0_2px_12px_rgba(255,255,255,0.15)]'
-                      : 'bg-white/[0.06] text-white/20 cursor-not-allowed'
+                      : 'bg-white/[0.06] text-white/30 cursor-not-allowed'
                   }`}
                 >
                   {isStreaming ? (
@@ -3919,10 +3958,10 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                       onClick={voice.isListening ? stopVoice : startVoice}
                       whileHover={{ scale: 1.12 }}
                       whileTap={{ scale: 0.9 }}
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                      className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
                         voice.isListening
-                          ? 'text-red-400 bg-red-400/10 border border-red-400/20 animate-pulse'
-                          : 'text-white/30 hover:text-white/70 hover:bg-white/[0.05]'
+                          ? 'text-[#f0968a] bg-[#f0968a]/10 border border-[#f0968a]/25 animate-pulse'
+                          : 'text-white/40 hover:text-white/80 hover:bg-white/[0.05]'
                       }`}
                     >
                       <Mic size={15} />
@@ -3945,10 +3984,10 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                       onClick={action}
                       whileHover={{ scale: 1.12 }}
                       whileTap={{ scale: 0.9 }}
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                      className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
                         active
                           ? 'text-white bg-white/10 border border-white/15'
-                          : 'text-white/30 hover:text-white/70 hover:bg-white/[0.05]'
+                          : 'text-white/40 hover:text-white/80 hover:bg-white/[0.05]'
                       }`}
                     >
                       {icon}
@@ -3962,9 +4001,9 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                     <motion.span
                       initial={{ opacity: 0, scale: 0.85 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className="text-[10px] font-sans font-medium text-red-400 bg-red-400/10 border border-red-400/20 px-2 py-0.5 rounded-full flex items-center gap-1"
+                      className="text-[10px] font-sans font-medium text-[#f0968a] bg-[#f0968a]/10 border border-[#f0968a]/25 px-2 py-0.5 rounded-full flex items-center gap-1"
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#f0968a] animate-pulse" />
                       LISTENING
                     </motion.span>
                   )}
@@ -3973,7 +4012,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                       initial={{ opacity: 0, scale: 0.85 }}
                       animate={{ opacity: 1, scale: 1 }}
                       title={voice.error}
-                      className="text-[10px] font-sans font-medium text-amber-400 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-full"
+                      className="text-[10px] font-sans font-medium text-[#c96b62] bg-[#c96b62]/10 border border-[#c96b62]/25 px-2 py-0.5 rounded-full"
                     >
                       mic error
                     </motion.span>
@@ -3982,7 +4021,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                     <motion.span
                       initial={{ opacity: 0, scale: 0.85 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className="text-[10px] font-sans font-medium text-white/40 bg-white/[0.05] border border-white/[0.08] px-2 py-0.5 rounded-full capitalize"
+                      className="text-[10px] font-sans font-medium text-white/55 bg-white/[0.05] border border-white/[0.08] px-2 py-0.5 rounded-full capitalize"
                     >
                       {chatMode}
                     </motion.span>
@@ -3991,12 +4030,12 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                     <motion.span
                       initial={{ opacity: 0, scale: 0.85 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className="text-[10px] font-sans font-medium text-emerald-300/90 bg-emerald-400/10 border border-emerald-400/25 px-2 py-0.5 rounded-full"
+                      className="text-[10px] font-sans font-medium text-white/70 bg-white/[0.07] border border-white/15 px-2 py-0.5 rounded-full"
                     >
                       auto-routed → {autoRoutedMode}
                     </motion.span>
                   )}
-                  <span className="text-[10px] text-white/20 font-sans hidden sm:inline">
+                  <span className="text-[10px] text-white/35 font-sans hidden sm:inline">
                     ⏎ send · ⇧⏎ newline
                   </span>
                 </div>
@@ -4033,13 +4072,13 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
         {/* Active model card */}
         <div className={`mobile-menu-glass rounded-2xl p-4 border border-white/10 relative transition-all ${showModelPicker ? 'z-50' : 'z-10'}`}>
           <div className="flex items-center justify-between">
-            <div className="font-mono-display text-[9px] uppercase tracking-widest text-white/50">
+            <div className="font-mono-display text-[10px] uppercase tracking-widest text-white/50">
               Active Node
             </div>
             {availableCatalog.length > 0 && (
               <button
                 onClick={() => { setShowModelPicker(!showModelPicker); setModelSearch('') }}
-                className="text-[9px] font-mono-display uppercase tracking-wider text-white/70 hover:text-white hover:underline flex items-center gap-1 cursor-pointer transition-colors"
+                className="text-[10px] font-mono-display uppercase tracking-wider text-white/70 hover:text-white hover:underline flex items-center gap-1 cursor-pointer transition-colors"
               >
                 <span>Switch</span>
                 <ChevronDown size={10} className={showModelPicker ? 'rotate-180 transition-transform' : 'transition-transform'} />
@@ -4049,7 +4088,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
           <div className="mt-1 font-garamond text-2xl font-normal text-white truncate">
             {activeModel.name}
           </div>
-          <div className="mt-1 font-mono-display text-[9px] uppercase tracking-wider text-white/70">
+          <div className="mt-1 font-mono-display text-[10px] uppercase tracking-wider text-white/70">
             {activeModel.provider} · {activeModel.free ? 'FREE' : 'PAID'}
           </div>
           <p className="mt-2 text-xs text-white/50 leading-relaxed line-clamp-3">
@@ -4092,7 +4131,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                     }}
                     disabled={refreshingCatalog}
                     title="Clear cache & fetch fresh models"
-                    className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-white/40 hover:text-white/80 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait"
+                    className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-white/40 hover:text-white/80 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                   >
                     <RefreshCw size={11} className={refreshingCatalog ? 'animate-spin' : ''} />
                     {refreshingCatalog ? 'Syncing' : 'Refresh'}
@@ -4101,7 +4140,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
 
                 {/* Search input */}
                 <div className="relative shrink-0 px-0.5">
-                  <Search size={11} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+                  <Search size={11} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/45 pointer-events-none" />
                   <input
                     ref={modelSearchRef}
                     autoFocus
@@ -4109,12 +4148,12 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                     value={modelSearch}
                     onChange={e => setModelSearch(e.target.value)}
                     placeholder="Search models…"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg pl-7 pr-3 py-1.5 text-xs text-white placeholder-white/25 outline-none focus:border-white/25 focus:bg-white/8 transition-all font-mono"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-7 pr-3 py-1.5 text-xs text-white placeholder-white/25 outline-none focus:border-white/25 focus:bg-white/8 transition-all font-mono"
                   />
                   {modelSearch && (
                     <button
                       onClick={() => setModelSearch('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors cursor-pointer"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/45 hover:text-white/80 transition-colors cursor-pointer"
                     >
                       <X size={10} />
                     </button>
@@ -4124,7 +4163,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                 {/* Scrollable results */}
                 <div className="overflow-y-auto space-y-3 scrollbar-thin pr-0.5">
                   {!hasResults && (
-                    <div className="px-2 py-6 text-center text-[11px] text-white/30 font-mono">
+                    <div className="px-2 py-6 text-center text-[11px] text-white/50 font-mono">
                       No models match &quot;{modelSearch}&quot;
                     </div>
                   )}
@@ -4132,7 +4171,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                   {/* Recommended Node Section */}
                   {filteredRecommended && (
                     <div className="space-y-1">
-                      <div className="text-[8px] font-bold text-emerald-400 uppercase tracking-widest px-2 py-0.5 select-none flex items-center gap-1">
+                      <div className="text-[10px] font-bold text-white/55 uppercase tracking-widest px-2 py-0.5 select-none flex items-center gap-1">
                         <span>★</span> Recommended Option
                       </div>
                       <button
@@ -4143,10 +4182,10 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                         }}
                         onMouseEnter={() => setHoveredModel(filteredRecommended)}
                         onMouseLeave={() => setHoveredModel(null)}
-                        className={`w-full text-left p-2 rounded-lg text-xs font-mono transition-all flex items-center justify-between cursor-pointer border ${
+                        className={`w-full text-left p-2 rounded-xl text-xs font-mono transition-all flex items-center justify-between cursor-pointer border ${
                           filteredRecommended.id === activeModel.id
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold'
-                            : 'bg-emerald-500/5 text-emerald-400/90 border-emerald-500/10 hover:bg-emerald-500/10 hover:border-emerald-500/20'
+                            ? 'bg-white/[0.12] text-white border-white/25 font-bold'
+                            : 'bg-white/[0.04] text-white/75 border-white/10 hover:bg-white/[0.08] hover:border-white/20'
                         }`}
                       >
                         <span className="truncate">{filteredRecommended.name}</span>
@@ -4154,10 +4193,10 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                           {(() => {
                             const chip = modelHealthChip(filteredRecommended)
                             return chip ? (
-                              <span title={chip.title} className={`text-[9px] font-bold ${chip.cls}`}>{chip.text}</span>
+                              <span title={chip.title} className={`text-[10px] font-bold ${chip.cls}`}>{chip.text}</span>
                             ) : null
                           })()}
-                          <span className="text-[8px] px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-300">SUGGESTED</span>
+                          <span className="text-[10px] px-1 py-0.5 rounded-full bg-white/[0.10] text-white/70">SUGGESTED</span>
                         </span>
                       </button>
                     </div>
@@ -4166,7 +4205,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                   {/* Categorized Catalog Sections */}
                   {filteredGroups.map(({ key, label, models }) => (
                     <div key={key} className="space-y-1">
-                      <div className="text-[8px] font-bold text-white/30 uppercase tracking-widest px-2 pt-1 select-none">
+                      <div className="text-[10px] font-bold text-white/45 uppercase tracking-widest px-2 pt-1 select-none">
                         {label}
                       </div>
                       <div className="space-y-0.5">
@@ -4180,7 +4219,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                             }}
                             onMouseEnter={() => setHoveredModel(m)}
                             onMouseLeave={() => setHoveredModel(null)}
-                            className={`w-full text-left p-2 rounded-lg text-xs font-mono transition-all flex items-center justify-between cursor-pointer ${
+                            className={`w-full text-left p-2 rounded-xl text-xs font-mono transition-all flex items-center justify-between cursor-pointer ${
                               m.id === activeModel.id
                                 ? 'bg-white/15 text-white border border-white/30 font-bold'
                                 : 'text-white/70 hover:bg-white/10 hover:text-white'
@@ -4191,10 +4230,10 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                               {(() => {
                                 const chip = modelHealthChip(m)
                                 return chip ? (
-                                  <span title={chip.title} className={`text-[9px] font-bold ${chip.cls}`}>{chip.text}</span>
+                                  <span title={chip.title} className={`text-[10px] font-bold ${chip.cls}`}>{chip.text}</span>
                                 ) : null
                               })()}
-                              <span className="text-[9px] opacity-60">{m.provider}</span>
+                              <span className="text-[10px] opacity-60">{m.provider}</span>
                             </span>
                           </button>
                         ))}
@@ -4213,14 +4252,14 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
             return (
               <div className="absolute left-full top-0 ml-3 w-80 max-h-[75vh] overflow-y-auto bg-[#0c0d14] border border-white/20 rounded-xl p-4 shadow-[0_20px_50px_rgba(0,0,0,0.9)] backdrop-blur-2xl text-xs space-y-3 z-[110] select-none text-left animate-in fade-in slide-in-from-left-2 duration-150">
                 <div className="sticky top-0 -mt-4 -mx-4 px-4 pt-4 pb-2 bg-[#0c0d14]/95 backdrop-blur-sm">
-                  <div className="text-[9px] uppercase tracking-widest text-white/40">Model Telemetry</div>
+                  <div className="text-[10px] uppercase tracking-widest text-white/50">Model Telemetry</div>
                   <div className="text-sm font-semibold text-white mt-0.5 truncate">{hoveredModel.name}</div>
                   <div className="text-[10px] text-white/50 mt-0.5">{hoveredModel.provider} · {hoveredModel.free ? 'FREE' : 'PAID'}</div>
                 </div>
 
                 {isRecommended && (
-                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2 text-emerald-300 text-[11px] leading-relaxed">
-                    <span className="font-semibold block mb-0.5 text-[9px] uppercase tracking-wider">★ Dynamic AI Suggestion</span>
+                  <div className="bg-white/[0.05] border border-white/[0.10] rounded-xl p-2 text-white/75 text-[11px] leading-relaxed">
+                    <span className="font-semibold block mb-0.5 text-[10px] uppercase tracking-wider">★ Dynamic AI Suggestion</span>
                     {recommendationReason}
                   </div>
                 )}
@@ -4258,23 +4297,23 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                   if (!keyStatus) return null
 
                   return (
-                    <div className={`p-2 rounded-lg border text-[11px] font-mono ${
+                    <div className={`p-2 rounded-xl border text-[11px] font-mono ${
                       keyStatus.hasKey
-                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                        ? 'bg-white/[0.05] border-white/[0.10] text-white/75'
                         : keyStatus.isOptional
                           ? 'bg-white/[0.03] border-white/10 text-white/50'
-                          : 'bg-amber-500/10 border-amber-500/20 text-amber-200'
+                          : 'bg-[#f0968a]/[0.08] border-[#f0968a]/25 text-[#f0968a]'
                     }`}>
-                      <div className="flex items-center justify-between font-bold text-[9px] uppercase tracking-wider mb-0.5">
+                      <div className="flex items-center justify-between font-bold text-[10px] uppercase tracking-wider mb-0.5">
                         <span>{keyStatus.name}</span>
-                        <span>{keyStatus.hasKey ? '✓ Active' : keyStatus.isOptional ? '⚡ Optional' : '⚠️ Missing'}</span>
+                        <span>{keyStatus.hasKey ? '✓ Active' : keyStatus.isOptional ? 'Optional' : 'Missing'}</span>
                       </div>
                       {!keyStatus.hasKey && (
                         <a
                           href={keyStatus.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[9px] uppercase font-bold text-cyan-400 hover:text-cyan-300 underline underline-offset-2 block mt-1"
+                          className="text-[10px] uppercase font-bold text-white/80 hover:text-white underline underline-offset-2 block mt-1"
                         >
                           {keyStatus.urlText}
                         </a>
@@ -4339,10 +4378,10 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                           acc += 250 + Math.min(f.text.length * 11, 1400) // stagger by typing time
                           return (
                             <div key={f.label}>
-                              <span className="text-[10px] uppercase tracking-wider text-white/30 block flex items-center gap-1">
+                              <span className="text-[10px] uppercase tracking-wider text-white/45 block flex items-center gap-1">
                                 {f.label}
                                 {f.label === 'Latency / Speed' && !info && (
-                                  <span className="text-white/20 normal-case tracking-normal">· researching…</span>
+                                  <span className="text-white/35 normal-case tracking-normal">· researching…</span>
                                 )}
                               </span>
                               <span className={`text-white/75 leading-relaxed block ${f.mono ? 'font-mono text-[10px]' : ''}`}>
@@ -4352,8 +4391,8 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                           )
                         })}
                         {info && (
-                          <div className="pt-1 flex items-center gap-1 text-[9px] text-emerald-400/60 uppercase tracking-wider">
-                            <span className="w-1 h-1 rounded-full bg-emerald-400/70" /> live · web-sourced · daily
+                          <div className="pt-1 flex items-center gap-1.5 text-[10px] text-white/55 uppercase tracking-wider">
+                            <span className="w-1 h-1 rounded-full bg-white/70" /> live · web-sourced · daily
                           </div>
                         )}
                       </>
@@ -4367,18 +4406,18 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
 
         {isImageActive ? (
           <div className="mobile-menu-glass rounded-2xl p-4 border border-white/10 flex flex-col gap-4 text-left">
-            <div className="font-mono-display text-[9px] uppercase tracking-widest text-white/50 mb-1">
+            <div className="font-mono-display text-[10px] uppercase tracking-widest text-white/50 mb-1">
               Image Settings
             </div>
 
             <div>
-              <label className="font-mono-display text-[8px] uppercase tracking-wider text-white/40 block mb-1">
+              <label className="font-mono-display text-[10px] uppercase tracking-wider text-white/40 block mb-1">
                 Model
               </label>
               <select
                 value={imageModel}
                 onChange={(e) => setImageModel(e.target.value)}
-                className="w-full bg-[#0d0d18]/60 border border-white/10 rounded-lg px-2.5 py-1.5 font-mono-display text-[10px] text-white focus:outline-none focus:border-white/20"
+                className="w-full bg-[#0d0d18]/60 border border-white/10 rounded-xl px-2.5 py-1.5 font-mono-display text-[10px] text-white focus:outline-none focus:border-white/20"
               >
                 <optgroup label="Free" className="bg-[#0b0b0b]">
                   <option value="flux" className="bg-[#0b0b0b]">FLUX.1 Schnell</option>
@@ -4403,19 +4442,19 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                   <option value="gpt-image-2" className="bg-[#0b0b0b]">GPT Image 2 (OpenAI)</option>
                 </optgroup>
               </select>
-              <p className="font-mono-display text-[7px] text-white/30 mt-1 leading-tight">
+              <p className="font-mono-display text-[11px] text-white/50 mt-1 leading-tight">
                 Keyless Pollinations caps near 1024px. A Pollinations or Cloudflare key unlocks native HD/FHD/2K.
               </p>
             </div>
 
             <div>
-              <label className="font-mono-display text-[8px] uppercase tracking-wider text-white/40 block mb-1">
+              <label className="font-mono-display text-[10px] uppercase tracking-wider text-white/40 block mb-1">
                 Quality
               </label>
               <select
                 value={imageQuality}
                 onChange={(e) => setImageQuality(e.target.value)}
-                className="w-full bg-[#0d0d18]/60 border border-white/10 rounded-lg px-2.5 py-1.5 font-mono-display text-[10px] text-white focus:outline-none focus:border-white/20"
+                className="w-full bg-[#0d0d18]/60 border border-white/10 rounded-xl px-2.5 py-1.5 font-mono-display text-[10px] text-white focus:outline-none focus:border-white/20"
               >
                 <option value="hd" className="bg-[#0b0b0b]">HD (720p-class)</option>
                 <option value="fhd" className="bg-[#0b0b0b]">Full HD (1080p)</option>
@@ -4424,13 +4463,13 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
             </div>
 
             <div>
-              <label className="font-mono-display text-[8px] uppercase tracking-wider text-white/40 block mb-1">
+              <label className="font-mono-display text-[10px] uppercase tracking-wider text-white/40 block mb-1">
                 Aspect Ratio
               </label>
               <select
                 value={imageAspect}
                 onChange={(e) => setImageAspect(e.target.value)}
-                className="w-full bg-[#0d0d18]/60 border border-white/10 rounded-lg px-2.5 py-1.5 font-mono-display text-[10px] text-white focus:outline-none focus:border-white/20"
+                className="w-full bg-[#0d0d18]/60 border border-white/10 rounded-xl px-2.5 py-1.5 font-mono-display text-[10px] text-white focus:outline-none focus:border-white/20"
               >
                 <option value="1:1" className="bg-[#0b0b0b]">
                   1:1 (Square)
@@ -4448,7 +4487,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
             </div>
 
             <div>
-              <label className="font-mono-display text-[8px] uppercase tracking-wider text-white/40 block mb-1">
+              <label className="font-mono-display text-[10px] uppercase tracking-wider text-white/40 block mb-1">
                 Negative Prompt
               </label>
               <input
@@ -4456,12 +4495,12 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                 value={imageNegative}
                 onChange={(e) => setImageNegative(e.target.value)}
                 placeholder="e.g. lowres, watermark"
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 font-mono-display text-[10px] text-white focus:outline-none focus:border-white/20 placeholder:text-white/25"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-2.5 py-1.5 font-mono-display text-[10px] text-white focus:outline-none focus:border-white/20 placeholder:text-white/40"
               />
             </div>
 
             <div>
-              <label className="font-mono-display text-[8px] uppercase tracking-wider text-white/40 block mb-1">
+              <label className="font-mono-display text-[10px] uppercase tracking-wider text-white/40 block mb-1">
                 Seed (blank = random)
               </label>
               <div className="flex gap-1.5">
@@ -4470,12 +4509,12 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                   value={imageSeed}
                   onChange={(e) => setImageSeed(e.target.value)}
                   placeholder="random"
-                  className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 font-mono-display text-[10px] text-white focus:outline-none focus:border-white/20 placeholder:text-white/25"
+                  className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-xl px-2.5 py-1.5 font-mono-display text-[10px] text-white focus:outline-none focus:border-white/20 placeholder:text-white/40"
                 />
                 <button
                   type="button"
                   onClick={() => setImageSeed(String(Math.floor(Math.random() * 1_000_000)))}
-                  className="shrink-0 px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/5 font-mono-display text-[9px] uppercase tracking-wider text-white/60 hover:text-white hover:border-white/20 transition-colors cursor-pointer"
+                  className="shrink-0 px-2.5 py-1.5 rounded-xl border border-white/10 bg-white/5 font-mono-display text-[10px] uppercase tracking-wider text-white/60 hover:text-white hover:border-white/20 transition-colors cursor-pointer"
                   title="Randomize seed"
                 >
                   ⟳
@@ -4489,7 +4528,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
           <>
             {/* Cognitive Mode options */}
             <div className="mobile-menu-glass rounded-2xl p-4 border border-white/10 flex flex-col gap-2">
-              <div className="font-mono-display text-[9px] uppercase tracking-widest text-white/50 mb-1">
+              <div className="font-mono-display text-[10px] uppercase tracking-widest text-white/50 mb-1">
                 Cognitive Mode
               </div>
               {([
@@ -4497,12 +4536,12 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                 { id: 'thinking', icon: '◆' },
                 { id: 'research', icon: '❖' },
                 { id: 'coding', icon: '⌘' },
-                { id: 'image-gen', icon: '🖼' },
+                { id: 'image-gen', icon: '▣' },
               ] as const).map(({ id, icon }) => (
                 <button
                   key={id}
                   onClick={() => handleModeChange(id)}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-1.5 font-mono-display text-[10px] uppercase tracking-widest border transition-all text-left cursor-pointer ${
+                  className={`flex items-center gap-2 rounded-xl px-3 py-1.5 font-mono-display text-[10px] uppercase tracking-widest border transition-all text-left cursor-pointer ${
                     chatMode === id
                       ? 'bg-white/10 border-white/30 text-white shadow-inner font-bold'
                       : 'bg-transparent border-transparent text-white/60 hover:text-white hover:bg-white/5'
@@ -4516,7 +4555,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
 
             {/* Augments options with customized neo-toggle switches */}
             <div className="mobile-menu-glass rounded-2xl p-4 border border-white/10 flex flex-col gap-3">
-              <div className="font-mono-display text-[9px] uppercase tracking-widest text-white/50">
+              <div className="font-mono-display text-[10px] uppercase tracking-widest text-white/50">
                 Augments
               </div>
               <ToggleSwitch label="Web Search" value={webSearch} onChange={setWebSearch} />
@@ -4527,21 +4566,21 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
               <div className="flex gap-2 mt-1">
                 <button
                   onClick={startNewChat}
-                  className="flex-1 rounded-lg border border-white/10 px-2 py-2 font-mono-display text-[9px] uppercase tracking-widest text-white/70 transition-colors hover:border-white/30 hover:text-white flex items-center justify-center gap-1 cursor-pointer"
+                  className="flex-1 rounded-xl border border-white/10 px-2 py-2 font-mono-display text-[10px] uppercase tracking-widest text-white/70 transition-colors hover:border-white/30 hover:text-white flex items-center justify-center gap-1 cursor-pointer"
                 >
                   <Plus size={11} />
                   <span>New chat</span>
                 </button>
                 <button
                   onClick={() => setShowHistoryDrawer(!showHistoryDrawer)}
-                  className="flex-1 rounded-lg border border-white/10 px-2 py-2 font-mono-display text-[9px] uppercase tracking-widest text-white/70 transition-colors hover:border-white/30 hover:text-white flex items-center justify-center gap-1 cursor-pointer"
+                  className="flex-1 rounded-xl border border-white/10 px-2 py-2 font-mono-display text-[10px] uppercase tracking-widest text-white/70 transition-colors hover:border-white/30 hover:text-white flex items-center justify-center gap-1 cursor-pointer"
                 >
                   <History size={11} />
                   <span>History</span>
                 </button>
                 <button
                   onClick={clearHistory}
-                  className="rounded-lg border border-white/10 px-2 py-2 font-mono-display text-[9px] uppercase tracking-widest text-white/50 transition-colors hover:border-rose-500/40 hover:text-rose-400 cursor-pointer"
+                  className="rounded-xl border border-white/10 px-2 py-2 font-mono-display text-[10px] uppercase tracking-widest text-white/50 transition-colors hover:border-[#c96b62]/40 hover:text-[#c96b62] cursor-pointer"
                 >
                   Clear
                 </button>
@@ -4677,7 +4716,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
             {/* Accent glow bar */}
             <div
               className="absolute top-0 left-0 right-0 h-0.5"
-              style={{ background: 'linear-gradient(90deg, transparent, rgba(99,102,241,0.8), rgba(139,92,246,0.8), transparent)' }}
+              style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.55), rgba(255,255,255,0.25), transparent)' }}
             />
 
             <div className="p-6">
@@ -4685,9 +4724,9 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
               <div className="flex items-center gap-3 mb-3">
                 <div
                   className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.2)' }}
+                  style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.16)' }}
                 >
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(139,92,246,1)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="11" cy="11" r="8"/>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"/>
                   </svg>
@@ -4703,11 +4742,11 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                 className="rounded-xl px-3 py-2.5 mb-5 font-mono-display text-[10px] text-white/50 leading-relaxed"
                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
               >
-                <span className="text-white/30 mr-1.5">"</span>
+                <span className="text-white/45 mr-1.5">"</span>
                 {researchPromptDialog.pendingMessage.length > 120
                   ? researchPromptDialog.pendingMessage.slice(0, 120) + '…'
                   : researchPromptDialog.pendingMessage}
-                <span className="text-white/30 ml-0.5">"</span>
+                <span className="text-white/45 ml-0.5">"</span>
               </div>
 
               {/* Choice buttons */}
@@ -4729,14 +4768,14 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                   }}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="mt-0.5 w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.2)' }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(74,222,128,1)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <div className="mt-0.5 w-6 h-6 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="9 18 15 12 9 6"/>
                       </svg>
                     </div>
                     <div>
                       <div className="text-white text-[12px] font-semibold mb-0.5">Surface Search</div>
-                      <div className="text-white/40 text-[10px] font-mono-display leading-relaxed">Quick web lookup · stays in normal mode · fast answer</div>
+                      <div className="text-white/55 text-[10px] font-mono-display leading-relaxed">Quick web lookup · stays in normal mode · fast answer</div>
                     </div>
                   </div>
                 </button>
@@ -4745,34 +4784,34 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                   onClick={() => handleResearchDialogChoice('deep', researchPromptDialog.pendingMessage)}
                   className="group w-full rounded-xl p-3.5 text-left transition-all duration-200 cursor-pointer"
                   style={{
-                    background: 'rgba(99,102,241,0.08)',
-                    border: '1px solid rgba(99,102,241,0.2)',
+                    background: 'rgba(255,255,255,0.07)',
+                    border: '1px solid rgba(255,255,255,0.16)',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(99,102,241,0.14)'
-                    e.currentTarget.style.borderColor = 'rgba(99,102,241,0.35)'
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.11)'
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.28)'
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(99,102,241,0.08)'
-                    e.currentTarget.style.borderColor = 'rgba(99,102,241,0.2)'
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.07)'
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.16)'
                   }}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="mt-0.5 w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)' }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(139,92,246,1)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <div className="mt-0.5 w-6 h-6 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.22)' }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                       </svg>
                     </div>
                     <div>
-                      <div className="text-white text-[12px] font-semibold mb-0.5">Deep Research <span className="text-[10px] text-indigo-400 ml-1 font-mono-display uppercase tracking-widest">Mode switch</span></div>
-                      <div className="text-white/40 text-[10px] font-mono-display leading-relaxed">Multi-source synthesis · switches to research mode · comprehensive report</div>
+                      <div className="text-white text-[12px] font-semibold mb-0.5">Deep Research <span className="text-[10px] text-white/50 ml-1 font-mono-display uppercase tracking-widest">Mode switch</span></div>
+                      <div className="text-white/55 text-[10px] font-mono-display leading-relaxed">Multi-source synthesis · switches to research mode · comprehensive report</div>
                     </div>
                   </div>
                 </button>
 
                 <button
                   onClick={() => setResearchPromptDialog(null)}
-                  className="w-full text-center text-[10px] text-white/30 hover:text-white/50 font-mono-display uppercase tracking-widest py-1 transition-colors cursor-pointer"
+                  className="w-full text-center text-[10px] text-white/45 hover:text-white font-mono-display uppercase tracking-widest py-1 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -4925,10 +4964,10 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                 previewDismissedRef.current = false
                 setPreviewOpen(true)
               }}
-              className={`fixed top-1/2 -translate-y-1/2 right-0 z-[9997] flex items-center gap-2 rounded-l-xl border border-r-0 border-white/15 bg-[#0c0d14]/95 backdrop-blur-xl px-3 py-2.5 text-white/70 hover:text-white hover:border-emerald-400/40 shadow-[0_8px_30px_rgba(0,0,0,0.6)] cursor-pointer transition-opacity ${sideDrawerOpen ? 'pointer-events-none opacity-0' : ''}`}
+              className={`fixed top-1/2 -translate-y-1/2 right-0 z-[9997] flex items-center gap-2 rounded-l-xl border border-r-0 border-white/15 bg-[#0c0d14]/95 backdrop-blur-xl px-3 py-2.5 text-white/70 hover:text-white hover:border-white/30 shadow-[0_8px_30px_rgba(0,0,0,0.6)] cursor-pointer transition-opacity ${sideDrawerOpen ? 'pointer-events-none opacity-0' : ''}`}
             >
-              <Monitor size={14} className="text-emerald-300" />
-              <span className="text-[9px] font-mono uppercase tracking-widest">Preview</span>
+              <Monitor size={14} className="text-white/70" />
+              <span className="text-[10px] font-mono uppercase tracking-widest">Preview</span>
             </motion.button>
           )}
 
@@ -4946,21 +4985,21 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                   {/* Panel header */}
                   <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3.5 py-2.5 bg-white/[0.02]">
                     <div className="flex items-center gap-2 min-w-0">
-                      <Monitor size={13} className="text-emerald-300 shrink-0" />
-                      <span className="text-[9px] font-mono uppercase tracking-widest text-white/60 truncate">
+                      <Monitor size={13} className="text-white/70 shrink-0" />
+                      <span className="text-[10px] font-mono uppercase tracking-widest text-white/60 truncate">
                         {preview.title || 'Live Preview'}
                       </span>
                       {preview.isProject && (
-                        <span className="shrink-0 rounded-full bg-violet-400/10 border border-violet-400/25 px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-widest text-violet-300/90">
+                        <span className="shrink-0 rounded-full bg-white/[0.08] border border-white/15 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-widest text-white/70">
                           {preview.files?.length ?? 0} files
                         </span>
                       )}
                       {storedFileCount > 0 && (
-                        <span className="shrink-0 rounded-full bg-amber-400/10 border border-amber-400/25 px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-widest text-amber-300/90">
+                        <span className="shrink-0 rounded-full bg-white/[0.08] border border-white/15 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-widest text-white/70">
                           saved {storedFileCount}
                         </span>
                       )}
-                      <span className="shrink-0 rounded-full bg-emerald-400/10 border border-emerald-400/25 px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-widest text-emerald-300/90">
+                      <span className="shrink-0 rounded-full bg-white/[0.08] border border-white/15 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-widest text-white/70">
                         running
                       </span>
                     </div>
@@ -4970,10 +5009,10 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                         onClick={zipCorrespondingPreview}
                         disabled={!storedCodeTask}
                         title="Download these files as a .zip"
-                        className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[9px] font-mono uppercase tracking-widest transition-all cursor-pointer ${
+                        className={`flex items-center gap-1.5 rounded-xl border px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest transition-all cursor-pointer ${
                           storedCodeTask
-                            ? 'border-amber-400/25 text-amber-300/90 hover:text-white hover:border-amber-400/40 hover:bg-amber-400/10'
-                            : 'border-white/10 text-white/25 cursor-not-allowed'
+                            ? 'border-white/15 text-white/75 hover:text-white hover:border-white/30 hover:bg-white/[0.08]'
+                            : 'border-white/10 text-white/30 cursor-not-allowed'
                         }`}
                       >
                         <Download size={10} />
@@ -4984,7 +5023,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                         target="_blank"
                         rel="noopener noreferrer"
                         title="Open in a new tab"
-                        className="flex items-center gap-1.5 rounded-lg border border-white/10 px-2 py-1.5 text-[9px] font-mono uppercase tracking-widest text-emerald-300/90 hover:text-white hover:border-emerald-400/40 hover:bg-emerald-400/10 transition-all cursor-pointer"
+                        className="flex items-center gap-1.5 rounded-xl border border-white/15 px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-white/75 hover:text-white hover:border-white/30 hover:bg-white/[0.08] transition-all cursor-pointer"
                       >
                         <ExternalLink size={10} />
                         Open new tab
@@ -4993,16 +5032,16 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                         type="button"
                         onClick={copyPreviewUrl}
                         title="Copy preview URL"
-                        className="flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1.5 text-[9px] font-mono uppercase tracking-widest text-white/50 hover:text-white hover:border-white/25 transition-all cursor-pointer"
+                        className="flex items-center gap-1 rounded-xl border border-white/10 px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-white/50 hover:text-white hover:border-white/25 transition-all cursor-pointer"
                       >
-                        {previewCopied ? <Check size={10} className="text-emerald-300" /> : <Copy size={10} />}
+                        {previewCopied ? <Check size={10} className="text-white/85" /> : <Copy size={10} />}
                         {previewCopied ? 'Copied' : 'URL'}
                       </button>
                       <button
                         type="button"
                         onClick={() => setPreviewFrameKey((k) => k + 1)}
                         title="Reload preview"
-                        className="w-7 h-7 flex items-center justify-center rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition-all cursor-pointer"
+                        className="w-7 h-7 flex items-center justify-center rounded-xl border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition-all cursor-pointer"
                       >
                         <RefreshCw size={11} />
                       </button>
@@ -5013,7 +5052,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                           setPreviewOpen(false)
                         }}
                         title="Close preview"
-                        className="w-7 h-7 flex items-center justify-center rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 hover:bg-white/[0.05] transition-all cursor-pointer"
+                        className="w-7 h-7 flex items-center justify-center rounded-xl border border-white/10 text-white/50 hover:text-white hover:border-white/25 hover:bg-white/[0.05] transition-all cursor-pointer"
                       >
                         <X size={12} />
                       </button>
@@ -5026,7 +5065,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                       {preview.files.map((f) => (
                         <span
                           key={f.path}
-                          className="shrink-0 rounded-md border border-white/10 bg-white/[0.03] px-2 py-0.5 font-mono text-[8px] uppercase tracking-wider text-white/50"
+                          className="shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-white/50"
                           title={f.path}
                         >
                           {f.path}

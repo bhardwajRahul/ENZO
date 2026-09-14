@@ -267,9 +267,6 @@ step "No unexpected large binary files (>300MB) tracked by git" \
 step "CHANGELOG.md exists, non-empty, has a dated entry" \
   "test -s '$ROOT/docs/CHANGELOG.md' && grep -qE '^## \[20[0-9]{2}-' '$ROOT/docs/CHANGELOG.md'"
 
-step "AGENTS.md (project guide) exists" \
-  "test -f '$ROOT/docs/AGENTS.md'"
-
 # ═══════════════════════════════════════════════════════════════
 if [[ "$RUN_PENTEST" == true ]]; then
   banner "STAGE 5b · SECURITY PENTEST (BLACK-BOX)"

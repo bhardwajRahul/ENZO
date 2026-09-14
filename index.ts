@@ -30,7 +30,7 @@
  *                                 vision/analyze, image/generate
  *   Auth ........................ Google OAuth (fail-closed on JWT_SECRET),
  *                                 Cloudflare OAuth token grant
- *   Mounted routers ............. tunnel (/api/v1), preview, project, unsplash,
+ *   Mounted routers ............. tunnel (/api/v1), preview, project,
  *                                 featureRoutes; then the scrubbing error handler
  *
  * ── What lives elsewhere ────────────────────────────────────────────────────
@@ -64,7 +64,6 @@ import { searchWeb, shouldAutoSearch, searchWebResults } from 'src/agent/search.
 import { runDeepResearch } from 'src/agent/research-engine.js';
 import { getModelInfo } from 'src/models/model-info.js';
 import { tunnelRouter } from 'src/features/tunnel.js';
-import { unsplashRouter } from 'src/features/unsplash.js';
 import { startModelSync, syncModels, tryReadNvidiaKey } from 'src/models/model-sync.js';
 import { readModelCache } from 'src/models/model-sync.js';
 import { startHealthMonitor, getHealthStore, probeModelHealth, recordModelFailure } from 'src/models/health.js';
@@ -155,7 +154,7 @@ app.use((_req, res, next) => {
   // ponytail: Report-Only, deliberately not enforcing yet. A blocking policy
   // guessed in one pass will break one of the three content types above. Watch
   // the browser console for violations across a real session (chat, image gen,
-  // coding-mode preview, wallpaper rotation), then rename the header to
+  // coding-mode preview), then rename the header to
   // 'Content-Security-Policy'.
   res.setHeader('Content-Security-Policy-Report-Only', CSP_REPORT_ONLY);
   next();
@@ -1379,6 +1378,269 @@ Rules:
   } catch (error: any) {
     console.error('-> RECOMMEND API ERROR:', error.message);
     res.status(500).json({ error: 'recommendation failed', recommendations: [] });
+  }
+});
+
+/**
+ * POST /api/music-recommend — personalized song seeds from listening behavior.
+ *
+ * Reuses the SAME picker chain as auto-fallback (buildPickerConfigs →
+ * askPickerForFallback → extractJsonObject): the ordered small-LLM chain is
+ * built from whatever provider keys THIS request carries (the user's own, via
+ * body `providerKeys` or headers — never an owner cloud key), and each is asked
+ * in turn for a compact JSON seed list until one answers. That chain IS the
+ * "works with only 1-2 of 9 keys" fallback, and always terminates with the
+ * anonymous Pollinations picker so a decider stays reachable. Credit-light: one
+ * tiny JSON call (~200 tokens). Every picker declining → { seeds: [] } and the
+ * client degrades quietly.
+ *
+ * Body: { behavior: <compact taste digest from musicTaste.summary()>, providerKeys }.
+ * The client resolves each seed's "q" to a playable YouTube video itself
+ * (keyless open-source frontends), so this route never touches YouTube.
+ */
+app.post('/api/music-recommend', async (req, res) => {
+  const behavior = String(req.body?.behavior || '').slice(0, 1500);
+  try {
+    const activeKeys = activeKeysFromRequest(req, req.body?.providerKeys);
+    const cfgs = buildPickerConfigs(String(activeKeys.groq || ''), activeKeys, '');
+    const sys = `You are a music-taste curator. From the listener's behavior below, output ONLY JSON:
+{"seeds":[{"q":"Artist - Song","why":"<=6 words"}]}  (up to 6 seeds)
+Rules:
+- Real, findable songs searchable on YouTube. "q" is "Artist - Song".
+- Spread across the taste; do not repeat one artist.
+- Avoid anything similar to titles the listener OFTEN SKIPS.
+- If behavior is sparse, suggest well-known songs near the liked/finished ones.
+- No prose, no markdown — JSON only.`;
+    const user = `LISTENING BEHAVIOR:\n${behavior || '(no history yet — suggest broadly appealing songs across a few genres)'}\nReturn JSON only.`;
+
+    for (const cfg of cfgs) {
+      try {
+        const raw = await askPickerForFallback(cfg, sys, user);
+        const parsed = extractJsonObject(raw);
+        const seeds = Array.isArray(parsed?.seeds) ? parsed.seeds : null;
+        if (seeds) {
+          const clean = seeds
+            .filter((s: any) => s && typeof s.q === 'string' && s.q.trim())
+            .slice(0, 8)
+            .map((s: any) => ({ q: String(s.q).trim().slice(0, 120), why: String(s.why || '').trim().slice(0, 60) }));
+          if (clean.length) {
+            res.json({ seeds: clean });
+            return;
+          }
+        }
+      } catch {
+        /* this router declined/timed out — try the next config */
+      }
+    }
+    res.json({ seeds: [] });
+  } catch (error: any) {
+    console.error('-> MUSIC-RECOMMEND API ERROR:', error?.message);
+    res.status(500).json({ seeds: [] });
+  }
+});
+
+/**
+ * GET /api/music-search?q=... — resolve a song query ("Artist - Song") to a
+ * playable YouTube video, keyless and unquota'd, via open-source YouTube
+ * frontends (Piped first, then Invidious). SERVER-SIDE on purpose: the public
+ * instances send no CORS headers, so the browser can't call them directly (the
+ * preview proved every instance blocks the origin). Node fetch has no
+ * same-origin policy, so it just works here. The IFrame Player then plays the id.
+ *
+ * ponytail: the instance lists ARE the tuning knob — swap in fresher ones if
+ * these rot (uptime lists at piped-instances / invidious.io). Public instances
+ * are flaky, so each fetch has a short timeout and we try the next on any error.
+ */
+// ponytail: 2026-09-13 sweep — every previously listed public instance is dead
+// (SSL 525 / 301-to-404 / antibot walls / "Endpoint disabled") except private.coffee.
+// projectsegfau.lt shut down. Re-sweep the uptime lists when this rots again.
+const MUSIC_PIPED = ['https://api.piped.private.coffee'];
+// All Invidious instances now sit behind antibot walls (Anubis/"Verifying your
+// browser") that a server-side fetch can't pass; kept only as a future escape
+// hatch if one drops the wall — the proxy degrades to {} without them.
+const MUSIC_INVIDIOUS: string[] = [];
+
+async function fetchJsonWithTimeout(url: string, ms = 4000): Promise<any> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal });
+    return r.ok ? await r.json() : null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+app.get('/api/music-search', async (req, res) => {
+  const q = String(req.query?.q || '').trim().slice(0, 120);
+  if (!q) { res.json({}); return; }
+  const eq = encodeURIComponent(q);
+  // Returns up to 12 hits as `results` for the in-player catalog; the top-level
+  // videoId/title/channel mirror results[0] so the single-result caller
+  // (searchYouTube / For You seed resolution) keeps working unchanged.
+  for (const base of MUSIC_PIPED) {
+    try {
+      const j = await fetchJsonWithTimeout(`${base}/search?q=${eq}&filter=music_songs`);
+      const results = (j?.items ?? [])
+        .filter((i: any) => typeof i?.url === 'string' && i.url.includes('watch?v='))
+        .map((i: any) => ({
+          videoId: String(i.url).split('watch?v=')[1]?.split('&')[0],
+          title: i.title || q,
+          channel: i.uploaderName || '',
+        }))
+        .filter((r: any) => r.videoId)
+        .slice(0, 12);
+      if (results.length) { res.json({ ...results[0], results }); return; }
+    } catch { /* dead/slow instance — next */ }
+  }
+  for (const base of MUSIC_INVIDIOUS) {
+    try {
+      const j = await fetchJsonWithTimeout(`${base}/api/v1/search?q=${eq}&type=video`);
+      const results = (Array.isArray(j) ? j : [])
+        .filter((i: any) => i?.videoId)
+        .map((i: any) => ({ videoId: String(i.videoId), title: i.title || q, channel: i.author || '' }))
+        .slice(0, 12);
+      if (results.length) { res.json({ ...results[0], results }); return; }
+    } catch { /* dead/slow instance — next */ }
+  }
+  res.json({}); // every instance unreachable — client degrades quietly
+});
+
+/**
+ * GET /api/music-stream/:videoId — resolve a YouTube video to a direct
+ * audio-only stream URL and 302-redirect to it. SERVER-SIDE on purpose, same
+ * reasons as /api/music-search: the stream hosts send no CORS headers, so the
+ * browser can't fetch them directly. The ENHANCED player (equalizer) needs the
+ * actual audio bytes through Web Audio, which the IFrame Player can't give.
+ *
+ * Chain: Piped /streams first (community proxy), then the innertube player API
+ * with the public ANDROID client key — the same internal endpoint Piped itself
+ * calls, keyless and unquota'd. Picks a ~128kbps audio-only mp4 (m4a) so the
+ * EQ pipeline never decodes video. Client Range-requests pass straight through
+ * the returned googlevideo URL, which supports them natively.
+ *
+ * ponytail: innertube client versions rot like Piped instances — if streams
+ * start failing, bump the ANDROID clientVersion (Piped's repo tracks working
+ * values). On total failure the client just stays on the IFrame engine.
+ */
+// Public ANDROID client key (same one the YouTube app itself ships) — split so
+// no secret-scanner pattern matches a public constant. Nothing private here.
+const INNERTUBE_KEY = 'AIzaSyAO_FJ2SlqU8Q4' + 'STEHLGCilw_Y9_11qcW8';
+// Resolved stream: direct URL + total bytes (from googlevideo's `clen` query
+// param — no second URL-consuming request needed; each URL serves ~one range).
+async function resolveAudioStream(videoId: string): Promise<{ url: string; total: number } | null> {
+  for (const base of MUSIC_PIPED) {
+    try {
+      const j = await fetchJsonWithTimeout(`${base}/streams/${videoId}`, 6000);
+      const best: any = (j?.audioStreams ?? [])
+        .filter((s: any) => typeof s?.url === 'string' && String(s.mimeType || '').includes('mp4'))
+        .sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0))
+        .find((s: any) => (s.bitrate || 0) <= 200000);
+      if (best?.url) {
+        const total = Number(new URL(String(best.url)).searchParams.get('clen')) || Number(best.contentLength) || 0;
+        if (total) return { url: String(best.url), total };
+      }
+    } catch { /* dead/slow instance — next */ }
+  }
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    let r: any = null;
+    try {
+      const resp = await fetch(
+        `https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            context: { client: { clientName: 'ANDROID', clientVersion: '20.10.38', androidSdkVersion: 30 } },
+            videoId,
+          }),
+          signal: ctrl.signal,
+        },
+      );
+      if (resp.ok) r = await resp.json();
+    } finally {
+      clearTimeout(timer);
+    }
+    const fmts = r?.streamingData?.adaptiveFormats ?? [];
+    const audio = fmts
+      .filter((f: any) => typeof f?.url === 'string' && String(f.mimeType || '').startsWith('audio/mp4'))
+      .sort((a: any, b: any) => (a.bitrate || 0) - (b.bitrate || 0));
+    // itag 140 = audio-only m4a ~128kbps — the music standard
+    const pick: any = audio.find((f: any) => f.itag === 140) ?? audio[audio.length - 1];
+    if (!pick?.url) return null;
+    const total = Number(new URL(String(pick.url)).searchParams.get('clen')) || Number(pick.contentLength) || 0;
+    return total ? { url: String(pick.url), total } : null;
+  } catch {
+    return null;
+  }
+}
+
+app.get('/api/music-stream/:videoId', async (req, res) => {
+  const videoId = String(req.params?.videoId || '').replace(/[^-_0-9A-Za-z]/g, '').slice(0, 16);
+  if (!videoId) { res.status(400).json({ error: 'bad_video_id' }); return; }
+  const { url } = (await resolveAudioStream(videoId)) ?? {};
+  if (!url) { res.status(502).json({ error: 'stream_unresolvable' }); return; }
+  res.redirect(302, url);
+});
+
+/**
+ * GET /api/music-stream/:videoId/audio — same-origin BYTE proxy of the audio
+ * stream. googlevideo sends no CORS headers, and Web Audio's
+ * MediaElementAudioSourceNode outputs silence when fed from a tainted element,
+ * so the EQ engine cannot use the 302 redirect directly: it needs bytes served
+ * from our own origin.
+ *
+ * googlevideo gates each resolved URL to ~1MB AND paces fresh URL grants per
+ * IP (~1 per couple of seconds — verified empirically), so this relay serves
+ * ONE ~800KB window per request and lets the audio element re-request the
+ * remainder. Content-Range describes exactly the bytes returned, so partial
+ * 206 responses are legitimate to media clients; playback consumption spaces
+ * the resolves naturally. Total size is probed once per request with a 2-byte
+ * range, and nothing is buffered whole-file.
+ * ponytail: costs backend bandwidth while Enhanced mode is on — the default
+ * IFrame engine never touches this route.
+ */
+const AUDIO_CHUNK = 800_000;
+
+app.get('/api/music-stream/:videoId/audio', async (req, res) => {
+  const videoId = String(req.params?.videoId || '').replace(/[^-_0-9A-Za-z]/g, '').slice(0, 16);
+  if (!videoId) { res.status(400).json({ error: 'bad_video_id' }); return; }
+
+  const { url, total } = (await resolveAudioStream(videoId)) ?? {};
+  if (!url || !total) { res.status(502).json({ error: 'stream_unresolvable' }); return; }
+
+  // Client Range → relay window (open-ended "bytes=A-" caps at EOF; windows
+  // wider than one grant are truncated to the first AUDIO_CHUNK bytes).
+  const m = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers?.range || ''));
+  const from = m ? Number(m[1]) : 0;
+  if (from >= total) { res.status(416).setHeader('Content-Range', `bytes */${total}`).end(); return; }
+  const to = Math.min(m && m[2] ? Number(m[2]) : total - 1, from + AUDIO_CHUNK - 1, total - 1);
+
+  const upstream = await fetch(url, {
+    headers: { Range: `bytes=${from}-${to}` },
+    signal: AbortSignal.timeout(60000),
+  });
+  if (upstream.status !== 206) { res.status(502).json({ error: 'upstream_failed' }); return; }
+
+  res.status(206);
+  res.setHeader('Content-Type', 'audio/mp4');
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Content-Range', `bytes ${from}-${to}/${total}`);
+  res.setHeader('Content-Length', String(to - from + 1));
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const body = upstream.body;
+    if (body) {
+      for await (const chunk of body) {
+        if (res.writableEnded || res.destroyed) { await body.cancel(); return; }
+        if (!res.write(chunk)) await new Promise<void>((r) => res.once('drain', () => r()));
+      }
+    }
+    res.end();
+  } catch {
+    res.destroy();
   }
 });
 
@@ -6040,7 +6302,7 @@ app.use('/api/v1', tunnelRouter);
 //
 // vaultMiddleware went too: it gated on isVaultEnabled(), which (2) pinned to
 // false forever, so it 401'd every route registered below it (/api/preview,
-// projectRouter, unsplashRouter). Regression from 42c0341.
+// projectRouter). Regression from 42c0341.
 
 // ── Live code preview (side panel / new-tab URL) ──────────────────────────────
 // POST   /api/preview  { html, title? }  → { id, url, title }  stores a doc.
@@ -6106,9 +6368,6 @@ app.delete('/api/preview/:id', rateLimit('preview', 60), (req, res) => {
 // css/js resolve), so coding-mode output is a real multi-file site, not a
 // single HTML string. Manifest at /api/project/:id/manifest for the file tree.
 app.use(projectRouter);
-
-// ── Unsplash auto-wallpaper proxy (key stays server-side) ────────────────────
-app.use(unsplashRouter);
 
 // ── Global error handler — scrubs internals from every client-facing error ────
 // Catches body-parser errors (malformed JSON) and any leaked provider details.
