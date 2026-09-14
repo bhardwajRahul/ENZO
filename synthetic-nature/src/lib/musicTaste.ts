@@ -74,7 +74,7 @@ export function summary(): string {
 }
 
 // ponytail: runnable check — shims localStorage, asserts tallies + digest.
-// Run with: npx tsx -e "import('./src/lib/musicTaste.ts').then(m => m.demo())"
+// Run demo() directly under tsx (it restores the real localStorage after).
 export function demo(): void {
   const mem: Record<string, string> = {}
   const g = globalThis as any
