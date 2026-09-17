@@ -37,6 +37,7 @@ import {
   Copy,
   Check,
   Monitor,
+  FileSpreadsheet,
 } from 'lucide-react'
 import { useVoiceInput } from '../hooks/useVoiceInput'
 import Switch from './Switch'
@@ -53,6 +54,7 @@ import type { CatalogModel } from '../App'
 import { mintVaultToken } from '../lib/vaultToken'
 import { closestPeer } from '../lib/modelPeer'
 import { storeCodeTask, downloadTaskZip, getCodeTask, loadCodeTasks, removeCodeTask, type StoredCodeTask } from '../lib/codeStorage'
+import { parseAttachment, extractReplyTables, mergeTables, downloadCsv, downloadExcel, type ParsedAttachment } from '../lib/fileConvert'
 
 // Words that appear in nearly every coding task (filenames, structure) and are
 // useless as discriminators when matching a prompt against saved projects.
@@ -146,6 +148,11 @@ export interface AttachedFile {
   content: string
   isImage: boolean
   previewUrl?: string
+  // Client-side parse state (fileConvert.ts): documents/spreadsheets are
+  // extracted in the browser the moment they attach — the chip shows the
+  // progress, and the send injects the parsed text/rows instead of raw bytes.
+  parsing?: boolean
+  parsed?: ParsedAttachment | null
 }
 
 // ─── Sub-Component: SynthesisTimer ───────────────────────────────────────────
@@ -1317,22 +1324,40 @@ export default function TerminalSection({
         }
         reader.readAsDataURL(file)
       } else {
-        const reader = new FileReader()
-        reader.onload = (e) => {
-          const result = (e.target?.result as string) || ''
-          setAttachedFiles((prev) => [
-            ...prev,
-            {
-              id: fileId,
-              name: file.name,
-              type: file.type || 'text/plain',
-              size: file.size,
-              content: result,
-              isImage: false,
-            },
-          ])
-        }
-        reader.readAsText(file)
+        // Documents/spreadsheets parse in the browser the moment they attach
+        // (fileConvert.ts): the chip flips to "parsing…", then reports what
+        // extraction found — tables, sheet names, or a no-text-layer marker
+        // for scanned pdfs. Binary kinds keep content empty so the state
+        // never carries garbage bytes; text-ish kinds keep the raw text as
+        // the send fallback when a parse somehow yields nothing.
+        const id = fileId
+        setAttachedFiles((prev) => [...prev, { id, name: file.name, type: file.type || 'text/plain', size: file.size, content: '', isImage: false, parsing: true }])
+        parseAttachment(file)
+          .then((parsed) => {
+            setAttachedFiles((prev) =>
+              prev.map((f) =>
+                f.id === id
+                  ? {
+                      ...f,
+                      parsing: false,
+                      parsed,
+                      content: parsed.tables.length === 0 && parsed.text ? parsed.text : '',
+                    }
+                  : f,
+              ),
+            )
+          })
+          .catch(() => {
+            // Parse failure: fall back to blind text read (old behavior) so
+            // the attachment is still usable for plain text kinds.
+            const reader = new FileReader()
+            reader.onload = (e) => {
+              setAttachedFiles((prev) =>
+                prev.map((f) => (f.id === id ? { ...f, parsing: false, parsed: null, content: (e.target?.result as string) || '' } : f)),
+              )
+            }
+            reader.readAsText(file)
+          })
       }
     })
   }
@@ -2087,6 +2112,10 @@ export default function TerminalSection({
     const forced = forcedPromptRef.current
     forcedPromptRef.current = null
     if ((!inputValue.trim() && attachedFiles.length === 0 && !forced) || isStreaming) return
+    // Send-guard: a document still parsing client-side would inject an empty
+    // block — parsing takes under a couple of seconds, hold the send until it
+    // lands.
+    if (attachedFiles.some((f) => f.parsing)) return
 
     let prompt = forced ?? inputValue.trim()
     // A real user message resets the auto-continue budget; a forced "continue"
@@ -2097,6 +2126,28 @@ export default function TerminalSection({
         .map((f) => {
           if (f.isImage) {
             return `[ATTACHED IMAGE: ${f.name} (${formatFileSize(f.size)})]\nData URI: ${f.content}`
+          }
+          if (f.parsed) {
+            const p = f.parsed
+            if (p.tables.length > 0) {
+              // Parsed rows travel as TSV blocks (one per table/sheet) — the
+              // agent can extract, merge or cross-convert from these directly.
+              const block = p.tables
+                .map((t) => {
+                  const label = t.page != null ? `TABLE — pdf page ${t.page}` : t.sheet ? `TABLE — sheet "${t.sheet}"` : 'TABLE'
+                  return `[${label}]\n${[t.header, ...t.rows].map((r) => r.join('\t')).join('\n')}`
+                })
+                .join('\n\n')
+              const rows = p.tables.reduce((n, t) => n + t.rows.length, 0)
+              return `[ATTACHED FILE: ${f.name} (${formatFileSize(f.size)}) — parsed client-side: ${p.tables.length} table${p.tables.length === 1 ? '' : 's'}, ${rows} data row${rows === 1 ? '' : 's'}${p.sheetNames.length > 1 ? `, sheets: ${p.sheetNames.join(', ')}` : ''}]\n${block}`
+            }
+            // Text-layer extraction (pdf text, md, json, txt): fence it like
+            // before, truncated so a 300-page paper can't blow the prompt.
+            const MAX = 24000
+            const body = p.text.length > MAX ? `${p.text.slice(0, MAX)}\n[…truncated, ${p.text.length} chars total]` : p.text
+            const ext = f.name.includes('.') ? f.name.split('.').pop() : ''
+            const note = p.noTextLayer ? ' — no text layer found (scanned pdf; only images)' : ''
+            return `[ATTACHED FILE: ${f.name} (${formatFileSize(f.size)})${note}]\n\`\`\`${ext}\n${body}\n\`\`\``
           }
           const ext = f.name.includes('.') ? f.name.split('.').pop() : ''
           return `[ATTACHED FILE: ${f.name} (${formatFileSize(f.size)})]\n\`\`\`${ext}\n${f.content}\n\`\`\``
@@ -3579,6 +3630,43 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                           </button>
                         </div>
                       )}
+
+                      {/* Per-message table downloads — any reply carrying a
+                          markdown table (merged output, cross-converted data)
+                          gets CSV / Excel buttons; all tables in the reply
+                          merge into one file. */}
+                      {m.role === 'assistant' && !isStreaming && extractReplyTables(m.text).length > 0 && (
+                        <div className="mt-2.5 flex items-center gap-2">
+                          {(() => {
+                            const tables = extractReplyTables(m.text)
+                            const merged = mergeTables(tables)
+                            const rows = merged.rows.length
+                            return (
+                              <>
+                                <span className="text-[10px] font-mono text-white/30">
+                                  {tables.length} table{tables.length === 1 ? '' : 's'} · {rows} row{rows === 1 ? '' : 's'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => downloadCsv([merged.header, ...merged.rows], 'enzo-tables.csv')}
+                                  className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5 font-mono-display text-[10px] uppercase tracking-widest text-white/70 hover:text-white hover:border-white/30 hover:bg-white/[0.12] transition-all cursor-pointer"
+                                >
+                                  <Download size={10} />
+                                  <span>CSV</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => downloadExcel([merged.header, ...merged.rows], 'enzo-tables.xlsx')}
+                                  className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5 font-mono-display text-[10px] uppercase tracking-widest text-white/70 hover:text-white hover:border-white/30 hover:bg-white/[0.12] transition-all cursor-pointer"
+                                >
+                                  <FileSpreadsheet size={10} />
+                                  <span>Excel</span>
+                                </button>
+                              </>
+                            )
+                          })()}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -3842,7 +3930,17 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                         )}
                         <div className="flex flex-col min-w-0 max-w-[140px]">
                           <span className="truncate text-[11px] font-mono font-medium leading-tight">{file.name}</span>
-                          <span className="text-[10px] font-mono text-white/40">{formatFileSize(file.size)}</span>
+                          <span className="text-[10px] font-mono text-white/40">
+                            {file.parsing
+                              ? 'parsing…'
+                              : file.parsed
+                              ? file.parsed.noTextLayer
+                              ? 'no text layer'
+                              : file.parsed.tables.length > 0
+                              ? `${file.parsed.tables.length} table${file.parsed.tables.length === 1 ? '' : 's'} · ${file.parsed.tables.reduce((n, t) => n + t.rows.length, 0)} rows`
+                              : `${formatFileSize(file.size)} text`
+                              : formatFileSize(file.size)}
+                          </span>
                         </div>
                         <button
                           type="button"
@@ -3915,7 +4013,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                 <motion.button
                   type={isStreaming ? 'button' : 'submit'}
                   onClick={isStreaming ? handleStop : undefined}
-                  disabled={!isStreaming && !inputValue.trim() && attachedFiles.length === 0}
+                  disabled={(!isStreaming && !inputValue.trim() && attachedFiles.length === 0) || attachedFiles.some((f) => f.parsing)}
                   whileHover={(inputValue.trim() || attachedFiles.length > 0 || isStreaming) ? { scale: 1.05 } : {}}
                   whileTap={(inputValue.trim() || attachedFiles.length > 0 || isStreaming) ? { scale: 0.92 } : {}}
                   title={isStreaming ? 'Stop generating' : 'Send'}

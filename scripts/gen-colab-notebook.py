@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""
+gen-colab-notebook.py — builds notebooks/enzo-colab.ipynb.
+
+The notebook is the zero-install Colab path: click-and-run clone + install +
+build + boot, a Colab proxy URL (same browser) plus a Cloudflare quick-tunnel
+URL (any device), and two disconnect-prevention mechanisms (60s keep-alive JS
+against Colab's ~90min idle timer, and a watchdog thread that restarts the
+server if it ever dies). Cells are idempotent — a re-run reuses what's there.
+
+Run: python3 scripts/gen-colab-notebook.py   (then validate: python3 -m json.tool)
+"""
+import json
+import os
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+CELLS = []
+
+# ── 1 · what this notebook is ────────────────────────────────────────────────
+CELLS.append({
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+        "# 🚀 ENZO on Google Colab — zero install\n",
+        "\n",
+        "Run the whole ENZO workspace on Google's hardware — no Docker, no local\n",
+        "setup, reachable from any device. **Run all cells** (`Runtime → Run all`,\n",
+        "or `Ctrl/⌘ + F9`) and take the URL the last cell prints.\n",
+        "\n",
+        "| Cell | What it does | Time |\n",
+        "|---|---|---|\n",
+        "| 1 · Install | clones this repo, installs deps, builds the UI | ~4–5 min first run, near-instant on a re-run |\n",
+        "| 2 · Start | boots the server in the background (UI + API on one origin) | ~10–20 s |\n",
+        "| 3 · Your URL | prints a Colab link (this browser) + a Cloudflare tunnel link (phone / any device) | ~1 min |\n",
+        "| 4 · Keep-alive | arms the disconnect prevention — see below | instant |\n",
+        "\n",
+        "**Stays up for the whole session.** Two mechanisms keep ENZO running for\n",
+        "6+ hours: a keep-alive that resets Colab's ~90-minute idle timer every\n",
+        "60 s (works while this tab stays open), and a watchdog thread that pings\n",
+        "the server every 5 min and restarts it if it ever dies. Free Colab caps a\n",
+        "session at ~12 h, so a 6-hour run fits comfortably inside it. When the\n",
+        "session ends, one click on **Run all** brings it back (the tunnel URL\n",
+        "changes each time).\n",
+        "\n",
+        "> The model keys are still **yours**: paste any provider key in the app\n",
+        "> after boot, exactly like self-hosting. Nothing is stored on our side —\n",
+        "> when the Colab session ends, everything on the VM is gone.\n",
+    ],
+})
+
+# ── 2 · install ──────────────────────────────────────────────────────────────
+CELLS.append({
+    "cell_type": "code",
+    "execution_count": None,
+    "metadata": {},
+    "outputs": [],
+    "source": [
+        "# 1 · Clone + install (~4–5 min the first time; a re-run reuses what's here)\n",
+        "import os\n",
+        "import subprocess\n",
+        "\n",
+        "if not os.path.exists('/content/enzo/package.json'):\n",
+        "    subprocess.run(\n",
+        "        ['git', 'clone', '--depth', '1',\n",
+        "         'https://github.com/theguysudo/ENZO.git', '/content/enzo'],\n",
+        "        check=True,\n",
+        "    )\n",
+        "else:\n",
+        "    print('ENZO already cloned — reusing this copy (server state intact).')\n",
+        "\n",
+        "# Backend deps: tsx + typescript are devDependencies — --include=dev is\n",
+        "# required or the runtime itself never installs.\n",
+        "if not os.path.exists('/content/enzo/node_modules/.bin/tsx'):\n",
+        "    subprocess.run(\n",
+        "        ['npm', 'ci', '--include=dev', '--no-audit', '--no-fund'],\n",
+        "        cwd='/content/enzo', check=True,\n",
+        "    )\n",
+        "else:\n",
+        "    print('Backend dependencies already installed — reusing.')\n",
+        "\n",
+        "# Frontend build. VITE_GOOGLE_AUTH=0 matches the self-hosted docker build:\n",
+        "# it dead-code-eliminates the Google sign-in branch (login is your keys).\n",
+        "if not os.path.exists('/content/enzo/synthetic-nature/dist/index.html'):\n",
+        "    subprocess.run(\n",
+        "        'VITE_GOOGLE_AUTH=0 npm ci --no-audit --no-fund && VITE_GOOGLE_AUTH=0 npm run build',\n",
+        "        cwd='/content/enzo/synthetic-nature', shell=True, check=True,\n",
+        "    )\n",
+        "else:\n",
+        "    print('Frontend already built — reusing.')\n",
+        "\n",
+        "print('\\n✓ ENZO is installed. Run the next cell to start the server.')\n",
+    ],
+})
+
+# ── 3 · start the server ─────────────────────────────────────────────────────
+CELLS.append({
+    "cell_type": "code",
+    "execution_count": None,
+    "metadata": {},
+    "outputs": [],
+    "source": [
+        "# 2 · Start ENZO in the background (UI + API on one origin, port 5001)\n",
+        "import os\n",
+        "import subprocess\n",
+        "import time\n",
+        "import urllib.request\n",
+        "\n",
+        "os.makedirs('/content/enzo/data', exist_ok=True)\n",
+        "os.makedirs('/content/enzo/generated-projects', exist_ok=True)\n",
+        "os.makedirs('/content/enzo/src/skills/skills', exist_ok=True)\n",
+        "if not os.path.exists('/content/enzo/data/memory-store.json'):\n",
+        "    with open('/content/enzo/data/memory-store.json', 'w') as f:\n",
+        "        f.write('{ \"entries\": [] }')\n",
+        "# The backend reads its memory store through this path — route it into\n",
+        "# data/ like the docker image does (named volume can't mount one file).\n",
+        "if not os.path.exists('/content/enzo/src/core/memory-store.json'):\n",
+        "    os.symlink('/content/enzo/data/memory-store.json', '/content/enzo/src/core/memory-store.json')\n",
+        "\n",
+        "def enzo_healthy(timeout=5):\n",
+        "    try:\n",
+        "        return urllib.request.urlopen('http://127.0.0.1:5001/api/health', timeout=timeout).status == 200\n",
+        "    except Exception:\n",
+        "        return False\n",
+        "\n",
+        "def start_enzo():\n",
+        "    log = open('/content/enzo-server.log', 'a')\n",
+        "    env = dict(os.environ, NODE_ENV='production', ENZO_SELF_HOSTED='1',\n",
+        "               ENZO_DATA_DIR='/content/enzo/data', PORT='5001')\n",
+        "    return subprocess.Popen(['/content/enzo/node_modules/.bin/tsx', 'index.ts'],\n",
+        "                            cwd='/content/enzo', stdout=log,\n",
+        "                            stderr=subprocess.STDOUT, env=env)\n",
+        "\n",
+        "if enzo_healthy():\n",
+        "    print('ENZO is already running — reusing it.')\n",
+        "else:\n",
+        "    start_enzo()\n",
+        "    for _ in range(60):\n",
+        "        time.sleep(2)\n",
+        "        if enzo_healthy():\n",
+        "            break\n",
+        "    print('✓ Backend ready — UI + API on port 5001.' if enzo_healthy()\n",
+        "          else '✗ Server did not come up — open /content/enzo-server.log to see why.')\n",
+    ],
+})
+
+# ── 4 · the URLs ─────────────────────────────────────────────────────────────
+CELLS.append({
+    "cell_type": "code",
+    "execution_count": None,
+    "metadata": {},
+    "outputs": [],
+    "source": [
+        "# 3 · Your ENZO URL — the Colab link works in this browser; the Cloudflare\n",
+        "#     tunnel link works from ANY device (phone, laptop) while the session lives.\n",
+        "import os\n",
+        "import re\n",
+        "import subprocess\n",
+        "import time\n",
+        "\n",
+        "try:\n",
+        "    from google.colab.output import eval_js\n",
+        "    colab_url = eval_js('google.colab.kernel.proxyPort(5001)')\n",
+        "except ImportError:\n",
+        "    colab_url = None\n",
+        "    print('Not in Colab — ENZO is on http://localhost:5001')\n",
+        "\n",
+        "if colab_url:\n",
+        "    print('🔗 ENZO (this browser):', colab_url)\n",
+        "\n",
+        "# Portable URL via a Cloudflare quick tunnel — free, no account. If the\n",
+        "# service is rate-limited or unreachable, the Colab link above still works.\n",
+        "if not os.path.exists('/content/cloudflared'):\n",
+        "    subprocess.run(\n",
+        "        'wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /content/cloudflared && chmod +x /content/cloudflared',\n",
+        "        shell=True,\n",
+        "    )\n",
+        "\n",
+        "tunnel_url = None\n",
+        "try:\n",
+        "    log = open('/content/cloudflared.log', 'w')\n",
+        "    subprocess.Popen(['/content/cloudflared', 'tunnel', '--url', 'http://localhost:5001'],\n",
+        "                     stdout=log, stderr=subprocess.STDOUT)\n",
+        "    for _ in range(45):\n",
+        "        time.sleep(2)\n",
+        "        m = re.search(r'https://[a-z0-9-]+\\.trycloudflare\\.com', open('/content/cloudflared.log').read())\n",
+        "        if m:\n",
+        "            tunnel_url = m.group(0)\n",
+        "            break\n",
+        "except Exception:\n",
+        "    pass\n",
+        "\n",
+        "if tunnel_url:\n",
+        "    print('🔗 ENZO (any device):', tunnel_url)\n",
+        "elif colab_url:\n",
+        "    print('Cloudflare tunnel unreachable right now — the Colab link above still works.')\n",
+        "\n",
+        "print('\\nRun the next cell to arm the keep-alive, then leave this tab open.')\n",
+    ],
+})
+
+# ── 5 · keep-alive + watchdog ────────────────────────────────────────────────
+CELLS.append({
+    "cell_type": "code",
+    "execution_count": None,
+    "metadata": {},
+    "outputs": [],
+    "source": [
+        "# 4 · Keep-alive — Colab idles a session out after ~90 min of tab\n",
+        "#     inactivity. Two mechanisms keep ENZO up for 6+ hours:\n",
+        "#       • the JS below resets Colab's idle timer every 60 s — works while\n",
+        "#         this tab stays open (free Colab caps a session ~12 h, so 6 h fits);\n",
+        "#       • a watchdog thread pings the server every 5 min and restarts it if\n",
+        "#         it ever dies, so the URL keeps serving even after a crash.\n",
+        "import os\n",
+        "import subprocess\n",
+        "import threading\n",
+        "import time\n",
+        "import urllib.request\n",
+        "\n",
+        "from IPython.display import HTML, display\n",
+        "\n",
+        "def _start_enzo():\n",
+        "    log = open('/content/enzo-server.log', 'a')\n",
+        "    env = dict(os.environ, NODE_ENV='production', ENZO_SELF_HOSTED='1',\n",
+        "               ENZO_DATA_DIR='/content/enzo/data', PORT='5001')\n",
+        "    return subprocess.Popen(['/content/enzo/node_modules/.bin/tsx', 'index.ts'],\n",
+        "                            cwd='/content/enzo', stdout=log,\n",
+        "                            stderr=subprocess.STDOUT, env=env)\n",
+        "\n",
+        "def _watchdog():\n",
+        "    while True:\n",
+        "        time.sleep(300)\n",
+        "        try:\n",
+        "            urllib.request.urlopen('http://127.0.0.1:5001/api/health', timeout=10)\n",
+        "        except Exception:\n",
+        "            try:\n",
+        "                _start_enzo()\n",
+        "            except Exception:\n",
+        "                pass\n",
+        "\n",
+        "threading.Thread(target=_watchdog, daemon=True).start()\n",
+        "\n",
+        "display(HTML(\"\"\"\n",
+        "<script>\n",
+        "  setInterval(() => {\n",
+        "    const b = document.querySelector('colab-connect-button');\n",
+        "    if (b) b.click();\n",
+        "    document.title = '\\u2705 ENZO running \\u00b7 ' + new Date().toLocaleTimeString();\n",
+        "  }, 60000);\n",
+        "</script>\n",
+        "<p><b>🟢 Keep-alive armed</b> — Colab's idle timer resets every 60 s while this\n",
+        "tab stays open, and the watchdog restarts the server if it ever dies. Keep the\n",
+        "tab open and ENZO serves for the full session (free Colab caps ~12 h; a 6-hour\n",
+        "run fits comfortably inside it). If the session still ends, run all cells again\n",
+        "— one click brings it back.</p>\n",
+        "\"\"\"))\n",
+    ],
+})
+
+NOTEBOOK = {
+    "nbformat": 4,
+    "nbformat_minor": 0,
+    "metadata": {
+        "colab": {"name": "enzo-colab.ipynb", "provenance": []},
+        "kernelspec": {"name": "python3", "display_name": "Python 3"},
+        "language_info": {"name": "python"},
+    },
+    "cells": CELLS,
+}
+
+out = os.path.join(REPO, 'notebooks', 'enzo-colab.ipynb')
+os.makedirs(os.path.dirname(out), exist_ok=True)
+with open(out, 'w', encoding='utf-8') as f:
+    json.dump(NOTEBOOK, f, indent=1, ensure_ascii=True)
+    f.write('\n')
+print(f'wrote {out} — {len(CELLS)} cells')

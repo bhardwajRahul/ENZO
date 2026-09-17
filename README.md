@@ -42,7 +42,7 @@
 | Pentest assertions | 44 | auth bypass, IDOR, hostile payloads, stream integrity |
 | Unit + security tests | 298 | agent, vault, crypto and model suites |
 | TypeScript (strict) | ~44,000 lines | one language, strict mode throughout |
-| Releases | 4 | v1.0.0 → v1.3.0, everything in the [changelog](docs/CHANGELOG.md) |
+| Releases | 5 | v1.0.0 → v1.4.0, everything in the [changelog](docs/CHANGELOG.md) |
 
 ## Quickstart
 
@@ -68,6 +68,21 @@ On a fresh self-hosted instance the **first live-validated key you paste claims 
 
 > [!TIP]
 > Try it hosted first: **https://enzo-hub.duckdns.org** — the same app, running on our infrastructure. This repo is exactly that code, minus Google sign-in (self-hosted login is just your provider keys) with a trimmed default theme set for a small download.
+
+## Run on Google Colab — zero install
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/theguysudo/ENZO/blob/main/notebooks/enzo-colab.ipynb)
+
+Don't want the local hassle — or want ENZO reachable from any device? The Colab notebook does the whole setup for you: it clones this repo, installs the dependencies, builds the UI and boots the server, then hands you a URL.
+
+1. **Click the button** — the notebook opens in Colab (a free Google account is enough).
+2. **Run all cells** (`Runtime → Run all`, or `Ctrl/⌘ + F9`) — install + build takes ~4–5 min the first time; every cell is idempotent, so a re-run reuses what's already there instead of starting over.
+3. **Take your URL** — the last cell prints two links: a **Colab link** that works in the browser you're already in, and a **Cloudflare tunnel link** that works from your phone or any other device (free, no account). The tunnel URL changes each session; the Colab link is bound to your session.
+
+**Stays up for the whole session.** The notebook arms two disconnect-prevention mechanisms before handing you the URL: a **keep-alive** that resets Colab's ~90-minute idle timer every 60 seconds while the tab is open, and a **watchdog thread** that pings the server every 5 minutes and restarts it automatically if it ever dies. Free Colab caps a session at ~12 hours, so a 6-hour run fits comfortably; when a session does end, one click on **Run all** brings everything back.
+
+> [!NOTE]
+> The notebook runs on Google's hardware, so Colab's terms apply while you're there — but your **model keys stay yours**: paste any provider key after boot, exactly like self-hosting, and nothing is ever stored on our side. When the Colab session ends, everything on the VM is gone.
 
 ## Six surfaces, one workspace
 
@@ -113,7 +128,13 @@ The full threat model is written down — checkable, with the code that makes ea
 - **Every push runs a 44-assertion black-box pentest** against a booted server — auth bypass, hostile payloads, IDOR, stream integrity — plus a keyless-boot proof: the server must start with zero provider keys. That's the BYOK guarantee, tested, not promised.
 - **The limits are stated up front.** Self-hosted mode stores the first key you claim in the container `.env` (sealed in the memory volume) so scheduled agents can run while your browser is closed — that trade is documented, not hidden. [docs/SECURITY.md](docs/SECURITY.md) covers what's protected, what isn't, and why.
 
-## What's new in v1.3.0
+## What's new in v1.4.0
+
+- **In-chat file converter** — attach a PDF, spreadsheet, CSV, JSON, TXT or Markdown file in the terminal chat and it's parsed to real text/rows in your browser (files never leave the device; only the reasoning step uses your own key, like normal chat). The agent extracts, merges, or cross-converts — and **CSV / Excel download buttons appear right on the reply**. Built for research papers: "extract every table and merge into one CSV" now works end to end, and scanned PDFs report their missing text layer instead of failing.
+- **Run it on Google Colab** — one click on the **Open In Colab** button (see [Run on Google Colab](#run-on-google-colab--zero-install)): the notebook clones, installs, builds and boots ENZO on Google's hardware, hands you a URL for your browser plus a tunnel URL for your phone, and arms a keep-alive + watchdog so it stays up for 6+ hours.
+- **Self-healing Docker pulls** — the container now verifies its dependencies on every start and installs anything missing before the server boots (`ENZO_AUTO_INSTALL=0` to skip). A pulled image can't boot broken.
+
+## What's new in v1.3.0 (previous)
 
 - **Music player** — search any song and play it straight from the marketplace, keyless (no YouTube API key, no quota): a collapsed corner pill expands into a full player card — vinyl disc hero, queue walking, shuffle/loop/like, keyboard controls. **For You** turns your own listening history (kept device-local) into song seeds through your own provider key.
 - **Real equalizer** — a 5-band Web Audio EQ (bass / low-mid / mid / presence / air, ±12 dB, preamp, five presets) that genuinely re-shapes the frequency response when you opt in. Enhance starts **off** — normal playback is untouched. Tracks the enhancer can't stream fall back to the YouTube engine automatically; playback never breaks.

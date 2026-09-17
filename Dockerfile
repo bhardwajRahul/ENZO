@@ -87,10 +87,19 @@ RUN mkdir -p data generated-projects src/skills/skills \
  && echo '{ "entries": [] }' > data/memory-store.json \
  && ln -s /app/data/memory-store.json src/core/memory-store.json
 
+# Entrypoint — auto dependencies install mode. On every start it verifies the
+# baked node_modules and installs whatever is missing before the server boots
+# (first boot, partial bake, empty mounted volume all heal). chmod in a layer,
+# not the source mode: a Windows checkout of a public clone loses the exec
+# bit, and a non-executable entrypoint would kill the container before boot.
+COPY --chown=node:node docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
+
 EXPOSE 5001
 
 # node:22-slim has no curl/wget — probe with what the image already has.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||5001)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
+ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["./node_modules/.bin/tsx", "index.ts"]

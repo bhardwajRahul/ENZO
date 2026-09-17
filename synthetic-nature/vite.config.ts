@@ -4,6 +4,12 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  // pdfjs-dist + exceljs are dynamically imported by fileConvert.ts on the
+  // first attachment — pre-bundling them here at dev-server start stops Vite
+  // from optimizing them mid-session (which forces a page reload).
+  optimizeDeps: {
+    include: ['pdfjs-dist', 'exceljs'],
+  },
   resolve: {
     alias: [{ find: '@', replacement: path.resolve(__dirname, 'src') }],
   },
