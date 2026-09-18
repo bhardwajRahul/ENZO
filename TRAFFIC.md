@@ -4,22 +4,6 @@
 > GitHub Actions. GitHub's API only retains 14 days of detail — this
 > page is the permanent record. Raw numbers live in [`traffic/`](traffic/).
 
-> Visitor and clone statistics, snapshotted automatically every week by
-> GitHub Actions. GitHub's API only retains 14 days of detail — this
-> page is the permanent record. Raw numbers live in [`traffic/`](traffic/).
-
-> Visitor and clone statistics, snapshotted automatically every week by
-> GitHub Actions. GitHub's API only retains 14 days of detail — this
-> page is the permanent record. Raw numbers live in [`traffic/`](traffic/).
-
-> Visitor and clone statistics, snapshotted automatically every week by
-> GitHub Actions. GitHub's API only retains 14 days of detail — this
-> page is the permanent record. Raw numbers live in [`traffic/`](traffic/).
-
-> Visitor and clone statistics, snapshotted automatically every week by
-> GitHub Actions. GitHub's API only retains 14 days of detail — this
-> page is the permanent record. Raw numbers live in [`traffic/`](traffic/).
-
 ## Latest snapshot
 
 **Week 2026-W38** (updated 2026-09-18)

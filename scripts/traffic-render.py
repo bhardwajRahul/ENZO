@@ -223,11 +223,14 @@ def main():
             return 0
         # Replace everything from '## Latest snapshot' up to the next '## '
         # (or EOF) with the new snapshot, keeping weekly history below.
+        # The header (title + blockquote) is rebuilt from scratch — reusing
+        # existing[:start] would stack a second blockquote under the previous
+        # run's, one duplicate per run.
         start = existing.index("## Latest snapshot")
         rest = existing[start:]
         nxt = rest.find("\n## ", 1)
         keep = existing[start + nxt:] if nxt > -1 else ""
-        body = existing[:start] + header.split("# Traffic\n\n", 1)[1] + keep
+        body = "# Traffic\n\n" + header.split("# Traffic\n\n", 1)[1] + keep
         with open("TRAFFIC.md", "w") as f:
             f.write(body)
     else:
