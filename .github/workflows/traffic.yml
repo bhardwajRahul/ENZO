@@ -1,9 +1,11 @@
-# Weekly traffic snapshot → TRAFFIC.md + shields.io badge JSONs.
+# Hourly traffic snapshot → TRAFFIC.md + shields.io badge JSONs.
 #
 # Why: GitHub's traffic API keeps only 14 days of data and is invisible to
 # anyone without push access. This job archives it publicly (numbers only)
 # into TRAFFIC.md and traffic/*.json (rendered as live badges in the README)
-# so visitors can see adoption on the repo page itself.
+# so visitors can see adoption on the repo page itself. GitHub updates its
+# traffic data ~once a day, so most hourly runs are no-ops — "Commit if
+# changed" keeps the history clean.
 #
 # The repo API (stars) is public; views/clones/referrers need a token with
 # push access. GITHUB_TOKEN is an App installation token and GitHub returns
@@ -20,7 +22,7 @@ name: traffic
 
 on:
   schedule:
-    - cron: '0 6 * * 1'  # Mondays 06:00 UTC
+    - cron: '0 * * * *'  # hourly, top of every hour
   workflow_dispatch: {}
 
 permissions:
@@ -50,6 +52,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "no traffic change to commit"
           else
-            git commit -m "chore(traffic): weekly snapshot [skip ci]"
+            git commit -m "chore(traffic): hourly snapshot [skip ci]"
             git push
           fi

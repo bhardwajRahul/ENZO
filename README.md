@@ -22,6 +22,7 @@
   <a href="https://github.com/theguysudo/ENZO/stargazers"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ftheguysudo%2FENZO%2Fmain%2Ftraffic%2Fstars.json" alt="stars"></a>
   <a href="https://github.com/theguysudo/ENZO/blob/main/TRAFFIC.md"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ftheguysudo%2FENZO%2Fmain%2Ftraffic%2Funique-views.json" alt="unique visitors"></a>
   <a href="https://github.com/theguysudo/ENZO/blob/main/TRAFFIC.md"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ftheguysudo%2FENZO%2Fmain%2Ftraffic%2Funique-clones.json" alt="unique cloners"></a>
+  <a href="https://github.com/theguysudo/ENZO/blob/main/TRAFFIC.md"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ftheguysudo%2FENZO%2Fmain%2Ftraffic%2Ftotal-clones.json" alt="total clones"></a>
   <a href="https://github.com/theguysudo/ENZO/actions/workflows/ci.yml/badge.svg"><img src="https://github.com/theguysudo/ENZO/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
   <a href="#quickstart"><img src="https://img.shields.io/badge/docker-ghcr.io%2Ftheguysudo%2Fenzo-2496ed" alt="Docker"></a>
