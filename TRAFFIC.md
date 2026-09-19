@@ -10,10 +10,11 @@
 
 | Last 14 days | Views | Unique visitors | Clones | Unique cloners | Stars |
 |---|---|---|---|---|---|
-| totals | 615 | 439 | 442 | 108 | 54 |
+| totals | 824 | 584 | 490 | 119 | 57 |
 
 | Day | Views | Unique | Clones | Unique |
 |---|---|---|---|---|
+| 2026-09-18 | 227 | 161 | 57 | 21 |
 | 2026-09-17 | 240 | 182 | 24 | 15 |
 | 2026-09-16 | 76 | 58 | 7 | 7 |
 | 2026-09-15 | 40 | 23 | 79 | 13 |
@@ -27,22 +28,21 @@
 | 2026-09-07 | 78 | 49 | 51 | 14 |
 | 2026-09-06 | 46 | 36 | 108 | 21 |
 | 2026-09-05 | 3 | 3 | 3 | 3 |
-| 2026-09-04 | 18 | 9 | 9 | 8 |
 
 ### Top referrers (last 14 days)
 
 | Source | Views | Unique |
 |---|---|---|
-| reddit.com | 74 | 48 |
-| facebook.com | 66 | 63 |
-| lm.facebook.com | 65 | 61 |
-| github.com | 56 | 39 |
-| l.facebook.com | 43 | 39 |
-| com.reddit.frontpage | 31 | 24 |
-| t.co | 16 | 14 |
-| Google | 7 | 7 |
+| lm.facebook.com | 109 | 101 |
+| facebook.com | 106 | 101 |
+| l.facebook.com | 84 | 69 |
+| reddit.com | 77 | 51 |
+| github.com | 61 | 43 |
+| com.reddit.frontpage | 35 | 28 |
+| Google | 16 | 15 |
+| t.co | 15 | 13 |
+| m.facebook.com | 10 | 8 |
 | felladrin-awesome-ai-web-search.static.hf.space | 6 | 6 |
-| m.facebook.com | 5 | 4 |
 
 
 ## Weekly history
