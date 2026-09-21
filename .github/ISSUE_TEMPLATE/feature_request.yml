@@ -1,0 +1,35 @@
+name: Feature request
+description: Propose a new feature or an improvement to an existing one.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas welcome — especially ones that fit ENZO's core promise: **your keys, your infrastructure, nothing in between taking a cut.**
+
+        By design, features that require an ENZO-side account, meter usage, or store visitor API keys server-side are out of scope. If your idea brushes that line, mention it — it will get a fair hearing.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What were you trying to do, and what got in the way? "When I try to X, I have to Y" is a great format.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What should it do?
+      description: The behavior you'd want. Rough is fine — a one-liner that names the gap beats a spec that misses it.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds you've tried
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and discussions for this idea
+          required: true

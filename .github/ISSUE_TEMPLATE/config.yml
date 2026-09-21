@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions & ideas
+    url: https://github.com/theguysudo/ENZO/discussions
+    about: Ask how something works, share a build, or talk through an idea before filing a feature request.
+  - name: Security vulnerability
+    url: https://github.com/theguysudo/ENZO/security/advisories/new
+    about: Report privately — please do not open a public issue for security problems.

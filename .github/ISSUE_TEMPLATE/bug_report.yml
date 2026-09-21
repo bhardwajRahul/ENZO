@@ -1,0 +1,96 @@
+name: Bug report
+description: Something broke — tell us what, where, and how to reproduce it.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file this. Three things that make bugs much faster to fix:
+
+        - Search [existing issues and discussions](https://github.com/theguysudo/ENZO/issues?q=is%3Aissue+sort%3Aupdated-desc) first — yours may already be there.
+        - **Never paste real API keys** anywhere in this form. Mask them (`sk-***`).
+        - Terminal output is gold — the `[DATA]` / `[GROQ]` lines in the backend log tell us exactly where a stream failed.
+
+        Which deploy mode are you on? [Hosted/BYOK](https://enzo-hub.duckdns.org) sends keys per request and never persists them; docker and local self-hosted runs may write them to `.env`.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug. Screenshots or screen recordings help a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: |
+        Numbered steps starting from a fresh state, for example:
+
+        1. Open the vault and save a Groq key
+        2. Select `groq/llama-3.3-70b-versatile` in the model catalog
+        3. Send a message
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Where does this happen?
+      options:
+        - Docker image (ghcr.io/theguysudo/enzo)
+        - Local run (npx tsx index.ts / start-servers.sh)
+        - Hosted demo (enzo-hub.duckdns.org)
+        - Other / not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of ENZO?
+      multiple: true
+      options:
+        - Chat / terminal
+        - Voice mode
+        - Agents (custom agent builder)
+        - Marketplace / model catalog
+        - Music player
+        - File converter
+        - Vault / keys / onboarding
+        - Docker / deployment
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model & provider (if relevant)
+      description: e.g. `groq/llama-3.3-70b-versatile` — or "not a model issue"
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, browser, and the ENZO version, Docker tag, or commit SHA.
+      placeholder: e.g. macOS 15, Chrome 140, docker ghcr.io/theguysudo/enzo:v1.4.0
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Terminal / console output
+      description: |
+        Backend logs and browser console output. **Mask any API keys first** — paste `sk-***`, never the real key.
+      render: shell
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and discussions for this bug
+          required: true
+        - label: I did not include any real API keys or secrets in this report
+          required: true
