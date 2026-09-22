@@ -10,10 +10,11 @@
 
 | Last 14 days | Views | Unique visitors | Clones | Unique cloners | Stars |
 |---|---|---|---|---|---|
-| totals | 2227 | 1650 | 488 | 139 | 88 |
+| totals | 2324 | 1702 | 489 | 145 | 88 |
 
 | Day | Views | Unique | Clones | Unique |
 |---|---|---|---|---|
+| 2026-09-21 | 175 | 135 | 52 | 20 |
 | 2026-09-20 | 1289 | 1003 | 50 | 23 |
 | 2026-09-19 | 163 | 114 | 59 | 22 |
 | 2026-09-18 | 227 | 161 | 57 | 21 |
@@ -27,22 +28,21 @@
 | 2026-09-10 | 18 | 13 | 10 | 7 |
 | 2026-09-09 | 22 | 17 | 14 | 8 |
 | 2026-09-08 | 31 | 28 | 90 | 13 |
-| 2026-09-07 | 78 | 49 | 51 | 14 |
 
 ### Top referrers (last 14 days)
 
 | Source | Views | Unique |
 |---|---|---|
-| news.ycombinator.com | 413 | 373 |
+| news.ycombinator.com | 429 | 387 |
 | facebook.com | 127 | 120 |
 | lm.facebook.com | 121 | 113 |
-| l.facebook.com | 99 | 77 |
-| reddit.com | 72 | 47 |
-| github.com | 68 | 49 |
-| com.reddit.frontpage | 33 | 26 |
-| brutalist.report | 29 | 26 |
-| Google | 28 | 26 |
-| hckrnews.com | 20 | 20 |
+| l.facebook.com | 103 | 79 |
+| github.com | 78 | 54 |
+| reddit.com | 46 | 33 |
+| Google | 33 | 28 |
+| brutalist.report | 30 | 26 |
+| hckrnews.com | 23 | 21 |
+| com.reddit.frontpage | 18 | 15 |
 
 
 ## Weekly history
