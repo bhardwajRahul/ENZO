@@ -10,7 +10,7 @@
 
 | Last 14 days | Views | Unique visitors | Clones | Unique cloners | Stars |
 |---|---|---|---|---|---|
-| totals | 2407 | 1735 | 465 | 153 | 98 |
+| totals | 2407 | 1735 | 465 | 153 | 99 |
 
 | Day | Views | Unique | Clones | Unique |
 |---|---|---|---|---|
