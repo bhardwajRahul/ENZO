@@ -28,6 +28,7 @@ import {
   Download,
   Mic,
   MicOff,
+  AudioLines,
   Minus,
   Square,
   Eye,
@@ -35,11 +36,22 @@ import {
   FolderOpen,
   Play,
   Copy,
-  Check,
-  Monitor,
   FileSpreadsheet,
+  Check,
 } from 'lucide-react'
 import { useVoiceInput } from '../hooks/useVoiceInput'
+import { useLowPowerMode } from '../hooks/useLowPowerMode'
+import { extractPreviewHtml, extractProjectFiles, codingReplyIncompleteReason } from '../lib/codeExtract'
+import PreviewPanel from './terminal/PreviewPanel'
+import { speakNaturally, speakMore, stopSpeaking, isSpeaking, speechText } from '../lib/voiceSpeak'
+import {
+  connectVoiceLive,
+  startMicCapture,
+  SpeechPlayer,
+  type VoiceLiveSession,
+  type MicCapture,
+} from '../lib/voiceLive'
+import { getProviderKeys } from '../lib/keyStore'
 import Switch from './Switch'
 import { TextShimmer } from './ui/text-shimmer'
 import { VSCodeWindow } from './ui/VSCodeWindow'
@@ -114,6 +126,26 @@ function findEditTargetTask(prompt: string, tasks: StoredCodeTask[]): StoredCode
   return best
 }
 
+// "Launch / open / show my cafe page (in preview)" — asks to SEE an existing
+// build rather than make a new one. Build verbs ("make", "code") disqualify —
+// those are new work and flow through the normal build path.
+function isLaunchOnlyRequest(prompt: string): boolean {
+  const p = prompt.toLowerCase()
+  if (/\b(make|build|create|write|code|generate|develop|design|implement|craft)\b/.test(p)) return false
+  if (!/\b(launch|open|show|display|preview|reload|run|start)\b/.test(p)) return false
+  return (
+    /\bpreview\b/.test(p) ||
+    /\b(my|the|that|this)\s+(project|app|page|site|website|webpage|dashboard|portfolio|landing)\b/.test(p) ||
+    /\b(it|them)\b/.test(p)
+  )
+}
+
+// "Do the same" / "make it again" / "continue my earlier build" — asks to pick
+// up where the last build left off instead of starting over.
+function wantsExistingBuild(prompt: string): boolean {
+  return /\bdo\s+(the\s+)?same\b|\b(again|previous|earlier|existing|current|unfinished|half[-\s]?built|half[-\s]?completed|resume|finish|complete)\b|^\s*(build|use|finish|run|open|show)\s+(this|that|it)\b/.test(prompt.toLowerCase())
+}
+
 // ─── Interfaces & Types ──────────────────────────────────────────────────────
 export interface ChatMessage {
   id?: string
@@ -183,7 +215,6 @@ function ServiceConnections() {
   const [showDetails, setShowDetails] = useState(false)
 
   useEffect(() => {
-    // Check connection status from backend
     fetch('/api/gmail/status')
       .then((r) => r.json())
       .then((data) => {
@@ -217,7 +248,6 @@ function ServiceConnections() {
           const checkClosed = setInterval(() => {
             if (popup.closed) {
               clearInterval(checkClosed)
-              // Refresh connection status
               fetch('/api/gmail/status')
                 .then((r) => r.json())
                 .then((data) => {
@@ -529,7 +559,8 @@ function parseMessageText(text: string): MessageSegment[] {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
-    if (line.trim().startsWith('```')) {
+    const fence = line.trim().match(/^```([^`]*)$/)
+    if (fence) {
       if (inCodeBlock) {
         segments.push({
           type: 'code',
@@ -547,8 +578,18 @@ function parseMessageText(text: string): MessageSegment[] {
           currentText = []
         }
         inCodeBlock = true
-        const match = line.trim().match(/^```([a-zA-Z0-9+#-]+)/)
-        currentLanguage = match ? match[1] : 'txt'
+        const header = fence[1].trim()
+        const token = header.split(/\s+/, 1)[0] || 'txt'
+        // Coding mode uses ```file:path/to/file.ext fences. Treat those as
+        // ordinary code blocks and derive the real language from the path so
+        // they get the same editor card and highlighting as normal fences.
+        if (token.toLowerCase().startsWith('file:')) {
+          const filePath = token.slice(5)
+          const extension = filePath.match(/\.([a-z0-9+#-]+)$/i)?.[1]
+          currentLanguage = extension || 'txt'
+        } else {
+          currentLanguage = token
+        }
       }
     } else {
       if (inCodeBlock) {
@@ -637,7 +678,6 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
 function renderMarkdownText(text: string) {
   const lines = text.split('\n')
   return lines.map((line, lineIdx) => {
-    // 1. Heading 1
     if (line.startsWith('# ')) {
       return (
         <h1 key={lineIdx} className="text-lg font-bold font-mono-display text-white mt-4 mb-2 tracking-wide border-b border-white/10 pb-1">
@@ -646,7 +686,6 @@ function renderMarkdownText(text: string) {
       )
     }
 
-    // 2. Heading 2
     if (line.startsWith('## ')) {
       return (
         <h2 key={lineIdx} className="text-base font-bold font-mono-display text-white/95 mt-3 mb-1.5 tracking-wide">
@@ -655,7 +694,6 @@ function renderMarkdownText(text: string) {
       )
     }
 
-    // 3. Heading 3
     if (line.startsWith('### ')) {
       return (
         <h3 key={lineIdx} className="text-sm font-semibold font-mono-display text-white/80 mt-2.5 mb-1.5 tracking-wide">
@@ -664,7 +702,6 @@ function renderMarkdownText(text: string) {
       )
     }
 
-    // 4. Bullet list items
     const trimmed = line.trim()
     const isBullet = trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')
     if (isBullet) {
@@ -676,7 +713,6 @@ function renderMarkdownText(text: string) {
       )
     }
 
-    // 5. Standard line
     return (
       <p key={lineIdx} className="min-h-[1.4em] leading-relaxed text-white/70 text-[13.5px] whitespace-pre-wrap break-words">
         {renderInlineMarkdown(line)}
@@ -722,114 +758,6 @@ function renderMessageContent(text: string) {
   )
 }
 
-/**
- * Pull a live-previewable HTML document out of an assistant reply.
- * Accepts a ```html fence (the common coding-mode shape) or a bare document,
- * but only when it actually looks like a real page — small inline snippets and
- * non-HTML code blocks are ignored so we never open a preview for e.g. a
- * python script.
- */
-function extractPreviewHtml(text: string): string | null {
-  if (!text || typeof text !== 'string') return null
-  const fence = text.match(/```(?:html|HTML)\s*\n([\s\S]*?)```/)
-  const body = (fence ? fence[1] : text).trim()
-  if (!body) return null
-
-  const lower = body.toLowerCase()
-  const isDocument =
-    lower.includes('<!doctype html') ||
-    lower.includes('<html') ||
-    lower.includes('<body') ||
-    lower.includes('</body>') ||
-    lower.includes('</html>') ||
-    (lower.includes('</') && (lower.includes('<style') || lower.includes('<script') || lower.includes('<header') || lower.includes('<nav') || lower.includes('<main') || lower.includes('<section')))
-  if (!isDocument) return null
-  if (body.length < 120 && !lower.includes('<!doctype') && !lower.includes('<html')) return null
-
-  return body
-}
-
-/**
- * Extract a multi-file project from a coding reply. The model emits one fence
- * per file using the path as its label:
- *   ```file:index.html ... ```
- *   ```file:css/styles.css ... ```
- *   ```file:js/app.js ... ```
- * Returns { "path": content } or null when no ```file: blocks are present.
- *
- * `salvage` (used when a reply is FINALIZED — stream end or user stop)
- * rescues the LAST file fence when generation was cut mid-file: its partial
- * content is kept instead of silently dropped, so an interrupted build never
- * loses the file it was writing. A later "continue" overwrites it with the
- * completed version.
- */
-function extractProjectFiles(text: string, salvage = false): Record<string, string> | null {
-  if (!text || typeof text !== 'string') return null
-  const files: Record<string, string> = {}
-  const re = /```file:([^\n]+?)\s*\n([\s\S]*?)```/g
-  let m: RegExpExecArray | null
-  while ((m = re.exec(text)) !== null) {
-    const p = m[1].trim().replace(/^\/+/, '').replace(/\\/g, '/')
-    if (!p || p.includes('..') || p.length > 200) continue
-    files[p] = m[2].replace(/\n+$/, '')
-  }
-  if (salvage) {
-    // Find the last ```file: opener and check whether it ever closed.
-    const openers = Array.from(text.matchAll(/```file:([^\n]+?)\s*\n/g))
-    const last = openers[openers.length - 1]
-    if (last && last.index !== undefined) {
-      const contentStart = last.index + last[0].length
-      const after = text.slice(contentStart)
-      const closerIdx = after.indexOf('\n```')
-      if (closerIdx === -1) {
-        // Unterminated final fence → generation was cut inside this file.
-        const p = last[1].trim().replace(/^\/+/, '').replace(/\\/g, '/')
-        const partial = after.replace(/\n+$/, '')
-        if (p && !p.includes('..') && p.length <= 200 && partial.trim().length > 0) {
-          files[p] = partial
-        }
-      }
-    }
-  }
-  return Object.keys(files).length >= 1 ? files : null
-}
-
-/**
- * Frontend twin of the server's codingReplyIncompleteReason: is a finished
- * coding reply still structurally incomplete (open fence, missing referenced
- * css/js, no closing </html>, an empty file)? Returns a reason or '' when whole.
- * Drives the browser auto-continue safety net so a build that ends short gets
- * "continue" re-sent automatically instead of the user typing it.
- */
-function codingReplyIncompleteReason(text: string): string {
-  if (!text) return ''
-  const openers = (text.match(/^```[^`\s][^\n]*$/gm) || []).length
-  const closers = (text.match(/^```\s*$/gm) || []).length
-  if (openers > closers) return 'an open code fence was never closed'
-  const files = extractProjectFiles(text)
-  if (!files) return ''
-  const paths = new Set(Object.keys(files))
-  const indexKey = Object.keys(files).find((p) => p === 'index.html' || p.endsWith('/index.html'))
-  if (indexKey) {
-    const html = files[indexKey]
-    if (!/<\/html\s*>/i.test(html)) return 'index.html has no closing </html> tag'
-    if (!/<\/body\s*>/i.test(html)) return 'index.html has no closing </body> tag'
-    const refs = [...html.matchAll(/(?:href|src)\s*=\s*["']([^"']+)["']/gi)]
-      .map((m) => m[1])
-      .filter((r) => r && !/^(?:https?:|data:|#|mailto:|\/\/)/i.test(r))
-      .map((r) => r.replace(/^\.?\//, '').split(/[?#]/)[0])
-    for (const ref of refs) {
-      if (/\.(?:css|js|mjs)$/i.test(ref) && !paths.has(ref)) return `references ${ref} which was not emitted yet`
-    }
-  }
-  for (const [p, content] of Object.entries(files)) {
-    if (content.trim().length === 0) return `file ${p} is empty`
-  }
-  return ''
-}
-
-
-
 export default function TerminalSection({
   activeModel,
   setActiveModel,
@@ -838,11 +766,14 @@ export default function TerminalSection({
   activeTab,
   setActiveTab,
 }: TerminalSectionProps) {
+  // Image-gen classification: the catalog's own metadata (type + tags) and the
+  // known image-model id markers. NO blanket pollinations/ rule — the catalog
+  // carries 500+ pollinations TEXT models that would all misroute to the image
+  // tab otherwise (the 2026-09-20 bug report).
   const isImageActive =
     activeModel.type === 'image' ||
     activeModel.type === 'image-gen' ||
     activeModel.tags?.includes('Image Gen') ||
-    activeModel.id.startsWith('pollinations/') ||
     activeModel.id.toLowerCase().includes('flux') ||
     activeModel.id.toLowerCase().includes('zimage')
 
@@ -1044,11 +975,47 @@ export default function TerminalSection({
   const [previewCopied, setPreviewCopied] = useState(false)
   const [previewFrameKey, setPreviewFrameKey] = useState(0)
   const previewPostAtRef = useRef(0)
-  const previewPostedHtmlRef = useRef<string | null>(null)
-  const previewLatestHtmlRef = useRef<string | null>(null)
   // Set when the user manually closes the panel; auto-open stays suppressed
   // for the rest of that turn so a newer throttle frame doesn't yank it back.
   const previewDismissedRef = useRef(false)
+  // Low-power devices skip the smears so the paper stays cheap.
+  const lowPower = useLowPowerMode()
+  // Docked preview reflow: when the panel opens, the terminal reflows to make
+  // room for it (animated padding/margin) instead of the panel floating over
+  // the content — nothing ends up hidden or off-center on any viewport.
+  const rootGridRef = useRef<HTMLDivElement | null>(null)
+  const [previewDockPad, setPreviewDockPad] = useState(0)
+  const [maxPreviewDockPad, setMaxPreviewDockPad] = useState(0)
+
+  useEffect(() => {
+    if (!previewOpen) {
+      setPreviewDockPad(0)
+      setMaxPreviewDockPad(0)
+      return
+    }
+    const measure = () => {
+      const vw = window.innerWidth
+      const panelW = Math.max(360, Math.min(vw * 0.46, 640))
+      // Maximized terminal is a true fullscreen row (p-2): reserve the full
+      // panel width plus one gap so the docked terminal sits flush beside it.
+      setMaxPreviewDockPad(vw >= 640 ? panelW + 8 : 0)
+      const el = rootGridRef.current
+      if (!el || vw < 1024) {
+        setPreviewDockPad(0)
+        return
+      }
+      const rect = el.getBoundingClientRect()
+      // Only the part of the panel that would cover content becomes padding —
+      // an 8px gap keeps the app's spacing rhythm between dock and panel.
+      const overlap = rect.right - (vw - 8 - panelW) + 8
+      // Keep the settings column (240px + 24px gap) and the terminal ≥ 420px.
+      const maxPad = Math.max(0, rect.width - 264 - 420)
+      setPreviewDockPad(Math.max(0, Math.min(overlap, maxPad)))
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [previewOpen])
   // Auto-continue safety net: when a coding reply's SSE fully closes but the
   // project is still incomplete (server hit its round budget / provider dropped),
   // the browser re-sends "continue" itself, up to MAX_AUTO_CONTINUE times, so the
@@ -1092,6 +1059,11 @@ export default function TerminalSection({
   // Auto-retry status: the backend hit a provider rate-limit mid-build and is
   // waiting out the cooldown before resuming the stream from where it stopped.
   const [retryInfo, setRetryInfo] = useState<{ provider: string; etaSec: number; cycle: number; status?: string } | null>(null)
+  // Build-verify status (the `event: build` frames): checking / passed / failed
+  // / done + file count — the live "is it coded?" signal under the reply.
+  const [buildInfo, setBuildInfo] = useState<{ status: string; ok: boolean; fileCount: number; round: number; maxRounds: number } | null>(null)
+  const buildInfoRef = useRef<typeof buildInfo>(null)
+  const [codingPhase, setCodingPhase] = useState<{ phase: string; detail: string } | null>(null)
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false)
   const [historyTab, setHistoryTab] = useState<'text' | 'image'>('text')
   // "My Projects" drawer: lists every coding task mirrored to localStorage
@@ -1220,6 +1192,295 @@ export default function TerminalSection({
     const tail = final + interim
     if (tail) setInputValue(base + tail)
   }
+
+  // ── Voice chat session (the ChatGPT-style hands-free loop) ───────────
+  // ON = listen → auto-send on ~1.6s of quiet (any new speech re-arms the
+  // window, so natural pauses don't fire it) → the reply streams → the
+  // finished reply is SPOKEN with humanized pacing (voiceSpeak) → listening
+  // resumes. The mic pauses while the AI works or talks — no free echo
+  // cancellation, so the recognizer must not hear the TTS and transcribe
+  // itself; tapping the mic while the AI speaks interrupts and resumes.
+  const [voiceChat, setVoiceChat] = useState(false)
+  const voiceChatRef = useRef(false)
+  voiceChatRef.current = voiceChat
+  const streamingRef = useRef(false)
+  streamingRef.current = isStreaming
+  const inputValueRef = useRef('')
+  inputValueRef.current = inputValue
+  const userStoppedRef = useRef(false)
+  const silenceTimerRef = useRef<number | null>(null)
+  const voiceMergedRef = useRef('')
+
+  const toggleVoiceChat = () => {
+    if (voiceChatRef.current) {
+      // full stop — native live session or the STT→TTS fallback
+      userStoppedRef.current = true
+      if (liveSessionRef.current) {
+        stopLive()
+      } else {
+        voice.stop()
+        stopSpeaking()
+      }
+      if (silenceTimerRef.current) { window.clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null }
+      setVoiceChat(false)
+    } else {
+      userStoppedRef.current = false
+      setVoiceChat(true)
+      // The brain is ALWAYS the model the user selected in the chat. Only when
+      // the selected model itself is a Gemini native-audio model does the voice
+      // mode become true speech-to-speech (the Live API — that model IS the
+      // brain, speaking natively). Every other selected model (Groq, Kimi,
+      // anything) gets the chain below, where the same selected model streams
+      // the answers and one TTS voice speaks the whole session — no seam.
+      const selectedIsGemini = !!activeModel?.id && activeModel.id.toLowerCase().includes('gemini')
+      if (selectedIsGemini && getProviderKeys().google) {
+        startLive()
+      } else {
+        // fallback loop — selected model streams, humanized TTS speaks it
+        voiceBaselineRef.current = inputValue
+        voice.reset()
+        voice.start()
+      }
+    }
+  }
+
+  // Auto-send on silence while the session listens. The turn goes through the
+  // forced-prompt path (bypasses the input box — no stale-state race, and the
+  // research-intent dialog can't block a hands-free flow).
+  useEffect(() => {
+    if (!voiceChat || !voice.isListening || isStreaming) return
+    const base = voiceBaselineRef.current
+    const needsSpace = base.length > 0 && !base.endsWith(' ')
+    const final = voice.finalText ? (needsSpace ? ' ' : '') + voice.finalText : ''
+    const needsSpaceAfterFinal = final && !final.endsWith(' ')
+    const interim =
+      voice.interimText
+        ? (final ? (needsSpaceAfterFinal ? ' ' : '') : needsSpace ? ' ' : '') + voice.interimText
+        : ''
+    const merged = (base + final + interim).trim()
+    voiceMergedRef.current = merged
+    if (!merged || merged === base.trim()) return
+    if (silenceTimerRef.current) window.clearTimeout(silenceTimerRef.current)
+    silenceTimerRef.current = window.setTimeout(() => {
+      silenceTimerRef.current = null
+      if (!voiceChatRef.current || streamingRef.current) return
+      const text = voiceMergedRef.current
+      if (!text) return
+      voiceMergedRef.current = ''
+      voice.stop()
+      voice.reset()
+      autoContinueCountRef.current = 0
+      // Hands-free: skip the research-intent dialog — it waits for a click,
+      // which would stall the voice loop mid-conversation.
+      skipResearchCheckRef.current = true
+      forcedPromptRef.current = text
+      handleSendRef.current({ preventDefault() {} } as React.FormEvent)
+    }, 1150)
+    return () => {
+      if (silenceTimerRef.current) { window.clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null }
+    }
+  }, [voiceChat, voice.isListening, voice.finalText, voice.interimText, isStreaming])
+
+  // The mic pauses while the AI works; the "airbag" filler speaks immediately
+  // so the network lag never reads as dead air — one voice identity through the
+  // whole session (the reply speech takes over the same voice when it lands).
+  useEffect(() => {
+    if (!voiceChatRef.current || !isStreaming) return
+    voice.stop()
+    if (!isSpeaking() && !liveSessionRef.current) {
+      // the airbag filler — also lights the chatbar glow
+      setTtsSpeaking(true)
+      speakNaturally('Hmm, let me see…')
+    }
+  }, [isStreaming])
+
+  // Speak the tail the streaming-speak didn't already cover, when the reply
+  // finishes (the loop's final TTS half). isStreaming true→false catches every
+  // completion path; user stops (handleStop) mark the partial interrupted — a
+  // stopped reply is never spoken. When speech ends, listening resumes and the
+  // loop continues.
+  const streamedRef = useRef(false)
+  useEffect(() => {
+    if (isStreaming) { streamedRef.current = true; return }
+    if (!streamedRef.current) return
+    streamedRef.current = false
+    if (!voiceChatRef.current || userStoppedRef.current) return
+    const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
+    if (!lastAssistant?.text || lastAssistant.interrupted) return
+    const tail = speechText(lastAssistant.text).slice(voiceSpokenUpToRef.current).trim()
+    if (tail) {
+      setTtsSpeaking(true)
+      speakMore(tail, {
+        onDone: () => {
+          setTtsSpeaking(false)
+          if (!voiceChatRef.current) return
+          voice.reset()
+          voiceBaselineRef.current = inputValueRef.current
+          voice.start()
+        },
+      })
+    } else {
+      // everything was already spoken mid-stream — resume listening directly
+      setTtsSpeaking(false)
+      if (typeof window !== 'undefined') {
+        window.setTimeout(() => {
+          if (!voiceChatRef.current) return
+          voice.reset()
+          voiceBaselineRef.current = inputValueRef.current
+          voice.start()
+        }, 600)
+      }
+    }
+    voiceSpokenUpToRef.current = 0
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStreaming, messages])
+
+  // ── Native speech-to-speech (Gemini Live API) ────────────────────────
+  // With a Google AI key the AudioLines toggle runs the TRUE speech-to-speech
+  // architecture — one model hears audio and speaks audio (human pacing and
+  // emotion are native, server-side VAD + barge-in included). Without a key
+  // it falls back to the voice-chat loop above (STT → chat → TTS). The key
+  // travels browser → Google directly; the ENZO server is never touched.
+  // Transcriptions log into the chat so the conversation reads like history.
+  const liveSessionRef = useRef<VoiceLiveSession | null>(null)
+  const micCapRef = useRef<MicCapture | null>(null)
+  const livePlayerRef = useRef<SpeechPlayer | null>(null)
+  const [liveSpeaking, setLiveSpeaking] = useState(false)
+  const [liveError, setLiveError] = useState<string | null>(null)
+  const liveInputRef = useRef('')
+  const liveOutputRef = useRef('')
+  // The chatbar glow: the model talking = live playback (the Gemini native
+  // path) or the TTS speaking (the fallback chain); the glow's intensity
+  // follows the live voice level (RMS), with a gentle pulse on the TTS path
+  // where no amplitude exists.
+  const [ttsSpeaking, setTtsSpeaking] = useState(false)
+  const [liveLevel, setLiveLevel] = useState(0)
+  const modelTalking = liveSpeaking || ttsSpeaking
+  // How much of the current reply the streaming-speak has already spoken
+  // (offset into the markdown-stripped text) — the completion effect speaks
+  // only the remaining tail.
+  const voiceSpokenUpToRef = useRef(0)
+
+  const stopLive = useCallback(() => {
+    liveSessionRef.current?.close()
+    liveSessionRef.current = null
+    micCapRef.current?.stop()
+    micCapRef.current = null
+    if (livePlayerRef.current) {
+      livePlayerRef.current.destroy()
+      livePlayerRef.current = null
+    }
+    setLiveSpeaking(false)
+    setLiveLevel(0)
+  }, [])
+
+  const startLive = useCallback(() => {
+    const key = getProviderKeys().google
+    if (!key) {
+      setLiveError('Add a Google AI key for native speech-to-speech voice')
+      return
+    }
+    setLiveError(null)
+    liveInputRef.current = ''
+    liveOutputRef.current = ''
+    const player = new SpeechPlayer({ onLevel: (l) => setLiveLevel(l) })
+    livePlayerRef.current = player
+    void player.resume()
+    const session = connectVoiceLive(key, {
+      onOpen: () => {
+        // mic → WS (started inside the open handler so the socket exists)
+        void startMicCapture((pcm) => session.sendAudio(pcm)).then((cap) => {
+          if (!cap) {
+            setLiveError('Microphone unavailable — allow mic access in the browser prompt')
+            stopLive()
+            return
+          }
+          micCapRef.current = cap
+        })
+      },
+      onAudio: (pcm) => {
+        player.enqueue(pcm)
+        setLiveSpeaking(true)
+      },
+      onInterrupted: () => {
+        // native barge-in — the user spoke over the model
+        player.stop()
+        setLiveSpeaking(false)
+        setLiveLevel(0)
+      },
+      onInputTranscript: (t) => {
+        liveInputRef.current += t
+      },
+      onOutputTranscript: (t) => {
+        liveOutputRef.current += t
+      },
+      onTurnComplete: () => {
+        setLiveSpeaking(false)
+        setLiveLevel(0)
+        // log the turn into the chat like normal messages
+        const input = liveInputRef.current.trim()
+        const output = liveOutputRef.current.trim()
+        liveInputRef.current = ''
+        liveOutputRef.current = ''
+        if (input) setMessages((prev) => [...prev, { role: 'user', text: input }])
+        if (output) setMessages((prev) => [...prev, { role: 'assistant', text: output }])
+      },
+      onClose: () => {
+        stopLive()
+      },
+      onError: (why) => {
+        setLiveError(why)
+      },
+    })
+    liveSessionRef.current = session
+  }, [stopLive])
+
+  // Tear the live session down with the component.
+  useEffect(() => () => stopLive(), [stopLive])
+
+  // ── Local Moshi (the true on-device speech-to-speech) ────────────────
+  // The model runs on the MACHINE's own mic and speakers (Apple Silicon, MLX),
+  // spawned on demand by the backend — the ~2GB weights live in the host
+  // cache, never in any image; stop releases the RAM instantly. This is a
+  // launcher/stop control: the conversation happens on the machine itself,
+  // the way a desktop voice assistant works.
+  const [localMoshi, setLocalMoshi] = useState<'idle' | 'loading' | 'running'>('idle')
+  const moshiBusy = localMoshi !== 'idle'
+  useEffect(() => {
+    if (!moshiBusy) return
+    let alive = true
+    const poll = async () => {
+      try {
+        const r = await fetch('/api/voice-local/status').then((x) => x.json())
+        if (!alive) return
+        setLocalMoshi(r?.running ? 'running' : 'idle')
+      } catch {
+        if (alive) setLocalMoshi('idle')
+      }
+    }
+    const t = window.setInterval(poll, 4000)
+    return () => {
+      alive = false
+      window.clearInterval(t)
+    }
+  }, [moshiBusy])
+
+  const toggleLocalMoshi = async () => {
+    if (localMoshi === 'running') {
+      setLocalMoshi('loading')
+      try { await fetch('/api/voice-local/stop', { method: 'POST' }) } catch { /* backend down */ }
+      setLocalMoshi('idle')
+      return
+    }
+    setLocalMoshi('loading')
+    try {
+      const r = await fetch('/api/voice-local/start', { method: 'POST' }).then((x) => x.json())
+      setLocalMoshi(r?.ok ? 'running' : 'idle')
+    } catch {
+      setLocalMoshi('idle')
+    }
+  }
+
 
   const handleDownloadPDF = async (text: string, index: number) => {
     setDownloadingPDF(index)
@@ -1395,7 +1656,6 @@ export default function TerminalSection({
     }
   }
 
-  // Return all catalog models so user can view/select them and configure missing keys if needed
   const availableCatalog = useMemo(() => {
     return catalog
   }, [catalog])
@@ -1696,6 +1956,10 @@ export default function TerminalSection({
   // Tracks the last *text-chat state* (session id + messages) so leaving
   // image-gen returns to the exact conversation that was paused, not a fresh one.
   const prevChatSessionRef = useRef<{ id: string | null; messages: ChatMessage[]; chatMode: string } | null>(null)
+  // The task text of the build currently streaming — becomes the project's
+  // title on save, so saved projects are identifiable ("webpage for a cafe")
+  // instead of every one reading "ENZO Project".
+  const lastBuildTaskRef = useRef('')
   // Ref to the composer textarea so its height can be managed from an effect
   // (React resets .value on re-render but leaves the manually-set inline height,
   // which is what made the box stay expanded after sending a long prompt).
@@ -1837,6 +2101,25 @@ export default function TerminalSection({
   useEffect(() => {
     const sess = sessions.find((s) => s.id === activeSessionId)
     sessionProjectIdRef.current = sess?.projectId || ''
+    // A session with no project starts with a CLEAN preview: the previous
+    // session's build must not linger on screen in a new chat (the stale-file
+    // report). A session WITH its own build shows that project instead.
+    if (!sess?.projectId) {
+      setPreview(null)
+      setPreviewOpen(false)
+      previewDismissedRef.current = false
+    } else if (preview && preview.id !== sess.projectId) {
+      const task = getCodeTask(sess.projectId)
+      if (task) {
+        setPreview({
+          id: task.id,
+          url: task.kind === 'project' ? `/api/project/${task.id}/` : `/api/preview/${task.id}`,
+          title: task.title,
+          isProject: task.kind === 'project',
+          files: Object.keys(task.files).map((p) => ({ path: p, size: (task.files[p] || '').length })),
+        })
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSessionId])
 
@@ -1858,8 +2141,14 @@ export default function TerminalSection({
       initModelRef.current = found.id
       setActiveModel(found)
     }
+    // `catalog.length` in the deps: on a fresh page load this effect fires while
+    // the catalog fetch is still in flight, misses (empty list), and the model
+    // stayed on the Llama default. Re-running when the catalog ARRIVES is what
+    // actually restores the session's model. Safe on later syncs — a session
+    // whose model already matches is a no-op, and a manual model switch mints a
+    // new session whose model matches too.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSessionId])
+  }, [activeSessionId, catalog.length])
 
   // Keep the active session's messages in lock-step with the live conversation
   // (captures every message — including commands, stream errors and roasts —
@@ -2037,8 +2326,10 @@ export default function TerminalSection({
   const getRealModelId = (model: CatalogModel) => {
     if (model.provider === 'Groq') {
       if (model.id.startsWith('groq/')) return model.id
-      if (model.id === 'llama-3.3-70b') return 'groq/llama-3.3-70b-versatile'
-      if (model.id === 'qwen3-32b') return 'groq/qwen/qwen3.6-27b'
+      // Legacy ids from saved history — both Groq originals were retired, so
+      // they map onto what Groq currently serves.
+      if (model.id === 'llama-3.3-70b') return 'groq/openai/gpt-oss-120b'
+      if (model.id === 'qwen3-32b') return 'groq/qwen/qwen3.8-27b'
       return `groq/${model.id}`
     }
     if (model.provider === 'Pollinations') {
@@ -2111,6 +2402,7 @@ export default function TerminalSection({
     e.preventDefault()    // A forced prompt (browser auto-continue) bypasses the input box + its guard.
     const forced = forcedPromptRef.current
     forcedPromptRef.current = null
+    userStoppedRef.current = false // a fresh turn is speakable again
     if ((!inputValue.trim() && attachedFiles.length === 0 && !forced) || isStreaming) return
     // Send-guard: a document still parsing client-side would inject an empty
     // block — parsing takes under a couple of seconds, hold the send until it
@@ -2183,12 +2475,17 @@ export default function TerminalSection({
     const newMsg: ChatMessage = { role: 'user', text: prompt }
     setMessages((prev) => [...prev, newMsg])
     setIsStreaming(true)
+    voiceSpokenUpToRef.current = 0 // a fresh turn speaks from the start
     setStreamedText('')
     setThoughtChain('')
     setResearchSteps([])
     setAutoRoutedMode(null)
     setRetryInfo(null)
+    buildInfoRef.current = null
+    setBuildInfo(null)
+    setCodingPhase(null)
     previewDismissedRef.current = false
+    lastBuildTaskRef.current = prompt
 
     // Editing an older saved project? Match the prompt against the My Projects
     // store. The pinned target either comes from a free-form mention (title or
@@ -2196,8 +2493,33 @@ export default function TerminalSection({
     // the pinned session project id). Pin it as the edit target so the backend
     // injects the REAL current files and the model edits them, not a fresh build.
     const editTarget = findEditTargetTask(prompt, loadCodeTasks())
+    const launchOnly = isLaunchOnlyRequest(prompt)
+    const sameAgain = wantsExistingBuild(prompt)
+    const pinnedTask = sessionProjectIdRef.current ? getCodeTask(sessionProjectIdRef.current) ?? null : null
     const editTask: StoredCodeTask | null =
-      editTarget ?? (editNotice ? getCodeTask(sessionProjectIdRef.current) ?? null : null)
+      editTarget ??
+      ((launchOnly || sameAgain) && pinnedTask ? pinnedTask : null) ??
+      (editNotice ? getCodeTask(sessionProjectIdRef.current) ?? null : null)
+    if (editTask && launchOnly) {
+      // Preview-only launch: "open/launch my cafe page" — show the existing
+      // build as-is. No model call, no regeneration: the panel opens straight
+      // onto the saved project and a local line confirms it.
+      sessionProjectIdRef.current = editTask.id
+      commitPreview({
+        id: editTask.id,
+        url: editTask.kind === 'project' ? `/api/project/${editTask.id}/` : `/api/preview/${editTask.id}`,
+        title: editTask.title,
+        isProject: editTask.kind === 'project',
+        files: Object.keys(editTask.files).map((path) => ({ path, size: (editTask.files[path] || '').length })),
+      })
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', text: `**${editTask.title}** is open in the live preview — the exact build you already have, shown as-is. Nothing was regenerated. Tell me a change and I'll edit it from its current code.`, mode: 'coding' },
+      ])
+      setIsStreaming(false)
+      setEditNotice(null)
+      return
+    }
     if (editTask) {
       sessionProjectIdRef.current = editTask.id
       setChatMode('coding') // editing a saved project always runs as a coding build
@@ -2399,7 +2721,6 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
       const cloudflareKey = keyVault.getItem('enzo.keys.cloudflare') || ''
       const cloudflareAccount = keyVault.getItem('enzo.keys.cloudflareAccount') || ''
 
-      // Create a fresh abort controller for this request so Stop can cancel it.
       const controller = new AbortController()
       abortRef.current = controller
 
@@ -2504,14 +2825,19 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
             runSteps.push(decoded)
             setResearchSteps((prev) => [...prev, decoded])
           } else if (frameEvent === 'mode') {
-            // Auto mode (per-message): the backend LLM picked the best execution
-            // mode for this turn. Reflect it in the live reply; never touch the
-            // user's mode toggle.
+            // Auto mode (per-message): the backend picked the best execution
+            // mode for this turn — the cognitive-mode picker itself moves to it
+            // (all four text modes are behavioral, no session swap), so the
+            // next message runs in the same mode without a manual re-pick.
             try {
               const payload = JSON.parse(dataLine)
               if (payload?.mode) {
                 autoRoutedModeRef.current = String(payload.mode)
                 setAutoRoutedMode(String(payload.mode))
+                const m = String(payload.mode)
+                if (m === 'normal' || m === 'thinking' || m === 'research' || m === 'coding') {
+                  setChatMode(m)
+                }
               }
             } catch { /* ignore bad payload */ }
           } else if (frameEvent === 'research-prompt') {
@@ -2524,7 +2850,33 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
               }
             } catch { /* ignore bad payload */ }
           } else if (frameEvent === 'build') {
-            // Build-verify progress metadata — never part of the reply text.
+            // Build-verify progress — the live "is it coded?" signal: checking /
+            // passed / failed / done + file count, surfaced as a status chip.
+            try {
+              const payload = JSON.parse(dataLine)
+              if (payload && typeof payload.status === 'string') {
+                const nextBuildInfo = {
+                  status: payload.status,
+                  ok: payload.ok === true,
+                  fileCount: Number(payload.fileCount) || 0,
+                  round: Number(payload.round) || 0,
+                  maxRounds: Number(payload.maxRounds) || 0,
+                }
+                buildInfoRef.current = nextBuildInfo
+                setBuildInfo(nextBuildInfo)
+              }
+            } catch { /* ignore bad payload */ }
+            continue
+          } else if (frameEvent === 'coding') {
+            try {
+              const payload = JSON.parse(dataLine)
+              if (payload && typeof payload.phase === 'string') {
+                setCodingPhase({
+                  phase: payload.phase,
+                  detail: typeof payload.detail === 'string' ? payload.detail : '',
+                })
+              }
+            } catch { /* ignore bad payload */ }
             continue
           } else if (frameEvent === 'retry') {
             // Auto-retry after a rate-limit, OR a thunder-pause (sustained-rate
@@ -2576,7 +2928,6 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
               try {
                 const toolResult = JSON.parse(decoded)
                 if (toolResult.not_connected && toolResult.authUrl) {
-                  // Determine which service based on the message context
                   const service: 'gmail' | 'calendar' | 'drive' =
                     decoded.includes('gmail') ? 'gmail' :
                     decoded.includes('calendar') ? 'calendar' :
@@ -2607,6 +2958,28 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
             }
             fullText += decoded
             setStreamedText(fullText)
+            // Streaming speak (voice mode): each completed sentence is spoken
+            // the MOMENT it lands — first audio in ~1-2s instead of after the
+            // whole reply. The speech queue appends, so the airbag filler
+            // finishes first and the sentences flow in the same voice. Guards:
+            // tool-protocol JSON chunks are never spoken, and while a code
+            // fence is open the speech holds (code is never read aloud).
+            if (
+              voiceChatRef.current &&
+              !decoded.includes('"not_connected":true') &&
+              !decoded.includes('"status":"needs_confirmation"')
+            ) {
+              const fenceCount = (fullText.match(/```/g) || []).length
+              const clean = fenceCount % 2 === 1 ? '' : speechText(fullText)
+              const fresh = clean.slice(voiceSpokenUpToRef.current)
+              const parts = fresh.match(/[^.!?…]+[.!?…]+["')\]]+/g)
+              if (parts?.length) {
+                const spoken = parts.join(' ').trim()
+                voiceSpokenUpToRef.current += spoken.length
+                setTtsSpeaking(true)
+                speakMore(spoken)
+              }
+            }
           }
         }
       }
@@ -2624,6 +2997,23 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
       // reply is final — if generation was cut inside the last file fence,
       // keep its partial content instead of silently dropping the file.
       syncPreviewFromText(fullText, true, true)
+      if (finalMsg.mode === 'coding' && (!buildInfoRef.current || buildInfoRef.current.status === 'checking' || buildInfoRef.current.status === 'failed')) {
+        const projectFiles = extractProjectFiles(fullText, true)
+        const incompleteReason = codingReplyIncompleteReason(fullText)
+        setCodingPhase({
+          phase: incompleteReason ? 'incomplete' : 'complete',
+          detail: incompleteReason ? `The project is incomplete: ${incompleteReason}.` : 'Project is ready in the live preview.',
+        })
+        const nextBuildInfo = {
+          status: incompleteReason ? 'incomplete' : projectFiles ? 'done' : 'skipped',
+          ok: !incompleteReason && !!projectFiles,
+          fileCount: projectFiles ? Object.keys(projectFiles).length : 0,
+          round: buildInfoRef.current?.round || 0,
+          maxRounds: buildInfoRef.current?.maxRounds || 0,
+        }
+        buildInfoRef.current = nextBuildInfo
+        setBuildInfo(nextBuildInfo)
+      }
       setMessages((prev) => [...prev, finalMsg])
       setStreamedText('')
       setThoughtChain('')
@@ -2657,6 +3047,22 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
         // Salvage: the user stopped the stream, so rescue the file that was
         // mid-write instead of losing it.
         syncPreviewFromText(fullText, true, true)
+        if ((autoRoutedModeRef.current ?? chatMode) === 'coding') {
+          const projectFiles = extractProjectFiles(fullText, true)
+          setCodingPhase({
+            phase: 'incomplete',
+            detail: 'Generation was stopped; the partial project was salvaged.',
+          })
+          const nextBuildInfo = {
+            status: 'incomplete',
+            ok: false,
+            fileCount: projectFiles ? Object.keys(projectFiles).length : 0,
+            round: buildInfoRef.current?.round || 0,
+            maxRounds: buildInfoRef.current?.maxRounds || 0,
+          }
+          buildInfoRef.current = nextBuildInfo
+          setBuildInfo(nextBuildInfo)
+        }
         setMessages((prev) => [
           ...prev,
           {
@@ -2698,6 +3104,22 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
         // Register the partial build so the preview keeps the produced files.
         // Salvage: the stream died, so keep the file it was mid-writing.
         if (partial) syncPreviewFromText(fullText, true, true)
+        if ((autoRoutedModeRef.current ?? chatMode) === 'coding') {
+          const projectFiles = extractProjectFiles(fullText, true)
+          setCodingPhase({
+            phase: 'incomplete',
+            detail: `Generation stopped before completion: ${err.message || err}`,
+          })
+          const nextBuildInfo = {
+            status: 'incomplete',
+            ok: false,
+            fileCount: projectFiles ? Object.keys(projectFiles).length : 0,
+            round: buildInfoRef.current?.round || 0,
+            maxRounds: buildInfoRef.current?.maxRounds || 0,
+          }
+          buildInfoRef.current = nextBuildInfo
+          setBuildInfo(nextBuildInfo)
+        }
         setMessages((prev) => [
           ...prev,
           {
@@ -2725,6 +3147,9 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
   const handleStop = useCallback(() => {
     abortRef.current?.abort()
     abortRef.current = null
+    stopSpeaking() // the airbag filler dies with the stop too
+    setTtsSpeaking(false)
+    userStoppedRef.current = true // a stopped partial is never spoken
     setIsStreaming(false)
   }, [])
 
@@ -2736,11 +3161,13 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
       title: string
       isProject?: boolean
       files?: { path: string; size: number }[]
-    }) => {
+    }, silent = false) => {
       if (!data?.url) return
-      previewPostedHtmlRef.current = data.url
       setPreview(data)
-      if (!previewDismissedRef.current) setPreviewOpen(true)
+      // `silent` = a mid-stream registration: the preview updates in the
+      // background but the panel does NOT open — it opens when the build is
+      // done (the stream's end / the build-verify verdict), never prematurely.
+      if (!silent && !previewDismissedRef.current) setPreviewOpen(true)
     },
     [],
   )
@@ -2750,10 +3177,9 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
   // when we have one so the user can later delete this preview from the
   // projects drawer (DELETE /api/preview/:id requires it).
   const registerPreview = useCallback(
-    async (html: string, force = false) => {
+    async (html: string, force = false, silent = false) => {
       const trimmed = html.trim()
       if (!trimmed) return null
-      previewLatestHtmlRef.current = trimmed
 
       const now = Date.now()
       if (!force && now - previewPostAtRef.current < 1500) return null
@@ -2771,7 +3197,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
         if (!res.ok) return null
         const data = await res.json()
         if (!data?.url) return null
-        commitPreview({ id: data.id, url: data.url, title: data.title || 'ENZO Live Preview' })
+        commitPreview({ id: data.id, url: data.url, title: data.title || 'ENZO Live Preview' }, silent)
         if (!isIncognito) {
           storeCodeTask({
             id: data.id,
@@ -2793,7 +3219,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
   // Register a multi-file project (```file:path blocks) — written to disk on
   // the backend and served as a real project so relative css/js resolve.
   const registerProject = useCallback(
-    async (files: Record<string, string>, force = false) => {
+    async (files: Record<string, string>, force = false, silent = false) => {
       if (!files || Object.keys(files).length === 0) return null
       const now = Date.now()
       if (!force && now - previewPostAtRef.current < 1500) return null
@@ -2809,7 +3235,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
           // Send the session's pinned id so this upserts the SAME container
           // instead of forking a new folder on every save. Empty on the first
           // save of a session — the backend mints one and we pin it below.
-          body: JSON.stringify({ files, title: 'ENZO Project', id: sessionProjectIdRef.current || undefined }),
+          body: JSON.stringify({ files, title: (lastBuildTaskRef.current || '').trim().slice(0, 80) || 'ENZO Project', id: sessionProjectIdRef.current || undefined }),
         })
         if (!res.ok) return null
         const data = await res.json()
@@ -2830,7 +3256,7 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
           title: data.title || 'ENZO Project',
           isProject: true,
           files: Array.isArray(data.files) ? data.files : [],
-        })
+        }, silent)
         if (!isIncognito) {
           storeCodeTask({
             id: data.id,
@@ -2862,17 +3288,21 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
   const syncPreviewFromText = useCallback(
     async (text: string, force = false, salvage = false) => {
       if (!text) return
+      // Mid-stream (force=false) the panel stays CLOSED: the preview updates
+      // silently and opens when the build is done (the build-verify verdict or
+      // the stream's end) — never prematurely while the model is still writing.
+      const silent = !force
       const project = extractProjectFiles(text, salvage)
       if (project) {
         const names = Object.keys(project)
         const hasIndex = names.some((n) => n === 'index.html' || n.endsWith('/index.html'))
         if (hasIndex || names.length >= 2) {
-          await registerProject(project, force)
+          await registerProject(project, force, silent)
           return
         }
       }
       const html = extractPreviewHtml(text)
-      if (html) await registerPreview(html, force)
+      if (html) await registerPreview(html, force, silent)
     },
     [registerProject, registerPreview],
   )
@@ -2888,14 +3318,32 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
   )
 
   // Live preview: while a coding reply streams, re-register the freshest
-  // doc/project so the panel follows the model as it writes.
+  // doc/project so the panel follows the model as it writes (silently — it
+  // opens on the build's verdict, not mid-write).
   useEffect(() => {
     if (!isStreaming) return
     syncPreviewFromText(streamedText)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStreaming, streamedText])
 
-  const previewAbsoluteUrl = preview ? new URL(preview.url, window.location.origin).href : ''
+  // The build's verdict opens the panel: files were registered silently while
+  // the model wrote; when the build-verify lands (done/passed), the preview
+  // opens onto the finished build — never before it's ready.
+  useEffect(() => {
+    if (!buildInfo || (buildInfo.status !== 'done' && buildInfo.status !== 'passed')) return
+    if (!preview || previewDismissedRef.current) return
+    setPreviewOpen(true)
+  }, [buildInfo, preview])
+
+  // try/catch — a malformed url must never crash the whole panel render.
+  const previewAbsoluteUrl = useMemo(() => {
+    if (!preview?.url) return ''
+    try {
+      return new URL(preview.url, window.location.origin).href
+    } catch {
+      return ''
+    }
+  }, [preview?.url])
 
   // While a right-edge drawer (History / My Projects) is open, the floating
   // live-preview panel (portaled at z-[9998] over the viewport's right edge)
@@ -3002,13 +3450,11 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
       setWebSearch(true)
     }
 
-    // Set the message in the input and submit the form.
-    // We put it in a microtask queue so state changes above flush first.
-    // Set the bypass flag so handleSend skips the research check on this submit.
+    // Microtask: state changes above flush before the form submit fires.
+    // The bypass flag makes handleSend skip the research check on this submit.
     skipResearchCheckRef.current = true
     setInputValue(pendingMessage)
     setTimeout(() => {
-      // Find the chat form and submit it programmatically
       const form = document.getElementById('enzo-chat-form') as HTMLFormElement | null
       if (form) {
         form.requestSubmit()
@@ -3104,11 +3550,9 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
 
     const terminalHeader = (<>
         {/* ─── Header Chrome ─────────────────────────────────────────────
-            One bar, one anchor: the model chip is the brightest thing here
-            because it is the only part that changes what the terminal does.
-            The window controls and the shell prefix sit under it, the actions
-            sit behind a hairline. Controls stay functional — they just lost
-            the traffic-light paint. */}
+            The model chip is the visual anchor — the only element here that
+            changes what the terminal does. Controls stay functional; they
+            just lost the traffic-light paint. */}
         <div className="relative z-10 flex items-center gap-4 px-5 py-2.5 border-b border-white/[0.06] bg-black/30 backdrop-blur-md">
           <div className="flex gap-1.5 items-center shrink-0">
             <button
@@ -3501,8 +3945,8 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                   </div>
                 ) : (
                   <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-white/[0.05] border border-white/[0.08] flex items-center justify-center shrink-0 mt-1">
-                      <Zap size={11} className="text-white/50" />
+                    <div className="w-6 h-6 rounded-full bg-white/[0.05] border border-white/[0.08] flex items-center justify-center shrink-0 mt-1 text-white/40 text-[13px] leading-none select-none">
+                      ›
                     </div>
                     <div className="max-w-[86%] text-white/80 text-[14px] leading-[1.7] font-sans tracking-[-0.01em] w-full">
                       {isResearchMessage(m) ? (
@@ -3605,11 +4049,11 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                             </button>
                           )}
                           <button
-                            onClick={() => navigator.clipboard.writeText(m.text).then(() => { /* copied */ })}
-                            className="flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 font-mono-display text-[10px] uppercase tracking-widest text-white/40 hover:text-white hover:border-white/20 transition-all bg-white/[0.01] cursor-pointer"
+                            onClick={() => navigator.clipboard.writeText(m.text)}
+                            title="Copy reply"
+                            className="w-7 h-7 flex items-center justify-center rounded-full border border-white/10 text-white/40 hover:text-white hover:border-white/20 transition-all bg-white/[0.01] cursor-pointer"
                           >
-                            <Copy size={10} />
-                            <span>Copy</span>
+                            <Copy size={11} />
                           </button>
                         </div>
                       )}
@@ -3806,6 +4250,75 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
             </motion.div>
           )}
 
+          {/* Build-verify status chip — checking (spinner) → passed (file count
+              live in the preview) → failed (repairing round). The answer to
+              "is the web page coded or not" is always on screen. */}
+          {buildInfo && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              className="flex items-start gap-3"
+            >
+              <div className="w-6 h-6 rounded-full bg-white/[0.06] border border-white/15 flex items-center justify-center shrink-0 mt-1">
+                {buildInfo.status === 'checking' || buildInfo.status === 'failed' ? (
+                  <RefreshCw size={11} className="animate-spin [animation-duration:1.2s] text-white/60" />
+                ) : buildInfo.status === 'incomplete' ? (
+                  <X size={11} className="text-[#f0968a]" />
+                ) : (
+                  <Check size={11} className="text-white/80" />
+                )}
+              </div>
+              <div className="flex flex-col gap-0.5 max-w-[86%]">
+                <div className="text-[11px] font-mono text-white/70">
+                  {buildInfo.status === 'checking'
+                    ? `Verifying build (${buildInfo.fileCount} file${buildInfo.fileCount === 1 ? '' : 's'})…`
+                    : buildInfo.status === 'passed'
+                      ? `Build verified — ${buildInfo.fileCount} file${buildInfo.fileCount === 1 ? '' : 's'} live in the preview`
+                      : buildInfo.status === 'failed'
+                        ? `Build check failed — repairing${buildInfo.maxRounds ? ` (round ${buildInfo.round}/${buildInfo.maxRounds})` : ''}…`
+                        : buildInfo.status === 'incomplete'
+                          ? `Build incomplete — ${buildInfo.fileCount ? `${buildInfo.fileCount} file${buildInfo.fileCount === 1 ? '' : 's'} salvaged; ` : ''}continuing automatically`
+                        : buildInfo.ok
+                          ? 'Build verified — live in the preview'
+                          : 'Build had issues — the reply above is still usable'}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {codingPhase && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              className="flex items-start gap-3"
+            >
+              <div className="w-6 h-6 rounded-full bg-white/[0.06] border border-white/15 flex items-center justify-center shrink-0 mt-1">
+                {codingPhase.phase === 'complete' ? (
+                  <Check size={11} className="text-white/80" />
+                ) : codingPhase.phase === 'incomplete' ? (
+                  <X size={11} className="text-[#f0968a]" />
+                ) : (
+                  <RefreshCw size={11} className="animate-spin [animation-duration:1.2s] text-white/60" />
+                )}
+              </div>
+              <div className="flex flex-col gap-0.5 max-w-[86%]">
+                <div className="text-[11px] font-mono uppercase tracking-widest text-white/70">
+                  {codingPhase.phase === 'planning' ? 'Planning' :
+                    codingPhase.phase === 'generating' ? 'Building' :
+                      codingPhase.phase === 'verifying' ? 'Verifying' :
+                        codingPhase.phase === 'repairing' ? 'Repairing' :
+                          codingPhase.phase === 'running' ? 'Running' :
+                            codingPhase.phase === 'complete' ? 'Ready' : 'Incomplete'}
+                </div>
+                {codingPhase.detail && (
+                  <div className="text-[11px] text-white/50 font-sans">{codingPhase.detail}</div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
           {/* Streaming wait dots (non-research, or research before any search steps) */}
           {isStreaming && !streamedText && !((autoRoutedMode ?? chatMode) === 'research' && researchSteps.length > 0) && (
             <motion.div
@@ -3906,6 +4419,37 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
             {/* Outer glass container */}
             <div className="relative bg-black/40 backdrop-blur-2xl border border-white/[0.10] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.07)] transition-all duration-300 focus-within:border-white/[0.18] focus-within:shadow-[0_8px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.10)]">
 
+              {/* Voice glow — light blue, moves as the model talks. The outer
+                  ring breathes with the live voice level (RMS of the native
+                  audio; a gentle pulse on the TTS path), and the light-blue
+                  sweep travels the bar while the model is speaking. Fades out
+                  the moment it stops. */}
+              <motion.div
+                className="absolute inset-0 rounded-2xl pointer-events-none overflow-hidden"
+                animate={{ opacity: modelTalking ? 1 : 0 }}
+                initial={{ opacity: 0 }}
+                transition={{ duration: 0.45, ease: 'easeOut' }}
+              >
+                <motion.div
+                  className="absolute inset-0 rounded-2xl"
+                  animate={{
+                    boxShadow: modelTalking
+                      ? `0 0 ${14 + liveLevel * 26}px ${2 + liveLevel * 7}px rgba(125, 211, 252, ${0.16 + liveLevel * 0.30})`
+                      : '0 0 0px 0px rgba(125, 211, 252, 0)',
+                  }}
+                  transition={{ duration: 0.16, ease: 'easeOut' }}
+                />
+                <motion.div
+                  className="absolute top-0 bottom-0 left-0 w-1/3 voice-glow-sweep"
+                  animate={{ x: modelTalking ? ['-150%', '330%'] : '-150%' }}
+                  transition={
+                    modelTalking
+                      ? { duration: 2.4, repeat: Infinity, ease: 'easeInOut' }
+                      : { duration: 0.4 }
+                  }
+                />
+              </motion.div>
+
               {/* Attached file chips */}
               <AnimatePresence>
                 {attachedFiles.length > 0 && (
@@ -3981,14 +4525,38 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                   spellCheck={false}
                 />
 
-                {/* Voice-to-text button (Web Speech API — Google/Apple cloud STT, highest accuracy free tier) */}
+                {/* Voice-to-text button (Web Speech API — Google/Apple cloud STT, highest accuracy free tier).
+                    Tap while the AI is speaking = interrupt: speech cancels, listening resumes. */}
                 {voice.isSupported && (
                   <motion.button
                     type="button"
-                    onClick={voice.isListening ? stopVoice : startVoice}
+                    onClick={() => {
+                      if (isSpeaking()) {
+                        stopSpeaking()
+                        voice.reset()
+                        voiceBaselineRef.current = inputValueRef.current
+                        userStoppedRef.current = false
+                        voice.start()
+                        return
+                      }
+                      if (liveSpeaking) {
+                        // native session: drop playback; the model's mic keeps
+                        // listening so just talk over it again
+                        livePlayerRef.current?.stop()
+                        setLiveSpeaking(false)
+                        return
+                      }
+                      if (voice.isListening) stopVoice()
+                      else {
+                        userStoppedRef.current = false
+                        startVoice()
+                      }
+                    }}
                     disabled={isStreaming}
                     title={
-                      voice.isListening
+                      isSpeaking()
+                        ? 'Interrupt and talk'
+                        : voice.isListening
                         ? `Stop dictation (${voice.lang})${voice.lastConfidence != null ? ` — last word confidence ${(voice.lastConfidence * 100).toFixed(0)}%` : ''}`
                         : `Start dictation (${voice.lang}) — Chrome/Edge use Google's cloud STT for best accuracy`
                     }
@@ -4001,11 +4569,46 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                         ? 'bg-white/[0.06] text-white/30 cursor-not-allowed'
                         : 'bg-white/[0.06] text-white/60 hover:bg-white/[0.10] hover:text-white cursor-pointer'
                     }`}
-                    aria-label={voice.isListening ? 'Stop dictation' : 'Start dictation'}
+                    aria-label={isSpeaking() ? 'Interrupt and talk' : voice.isListening ? 'Stop dictation' : 'Start dictation'}
                     aria-pressed={voice.isListening}
                   >
                     {voice.isListening ? <MicOff size={14} strokeWidth={2.5} /> : <Mic size={14} strokeWidth={2.5} />}
                   </motion.button>
+                )}
+
+                {/* Voice chat toggle — the ChatGPT-style hands-free loop: listen,
+                    auto-send on quiet, speak replies with humanized pacing; the
+                    mic pauses while the AI talks; tap again to end the session. */}
+                {voice.isSupported && (
+                  <motion.button
+                    type="button"
+                    onClick={toggleVoiceChat}
+                    title={
+                      voiceChat
+                        ? activeModel?.id?.toLowerCase().includes('gemini') && getProviderKeys().google
+                          ? 'End voice chat (native speech-to-speech — just talk, tap the mic to interrupt)'
+                          : 'End voice chat (your selected model streams, spoken replies read it)'
+                        : activeModel?.id?.toLowerCase().includes('gemini') && getProviderKeys().google
+                        ? 'Voice chat — true speech-to-speech (your selected Gemini model, free tier)'
+                        : 'Voice chat — hands-free: your selected model answers, replies are spoken'
+                    }
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.92 }}
+                    className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-xl mt-0 transition-all ${
+                      voiceChat
+                        ? 'bg-[#f0968a] text-black animate-pulse'
+                        : 'bg-white/[0.06] text-white/60 hover:bg-white/[0.10] hover:text-white cursor-pointer'
+                    }`}
+                    aria-label={voiceChat ? 'End voice chat' : 'Start voice chat'}
+                    aria-pressed={voiceChat}
+                  >
+                    <AudioLines size={14} strokeWidth={2.5} />
+                  </motion.button>
+                )}
+                {liveError && (
+                  <span className="shrink-0 text-[10px] text-[#f0968a] max-w-[180px] truncate" title={liveError}>
+                    {liveError}
+                  </span>
                 )}
 
                 {/* Send / Stop button — becomes a Stop (square) control while
@@ -4065,6 +4668,35 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
                       <Mic size={15} />
                     </motion.button>
                   )}
+                  {/* Local Moshi — the true on-device speech-to-speech launcher.
+                      Spawns the MLX model on this machine on demand (weights in
+                      the host cache, RAM released on stop); the conversation
+                      happens on the machine's own mic and speakers. */}
+                  <motion.button
+                    type="button"
+                    title={
+                      localMoshi === 'running'
+                        ? 'Moshi is running on this machine — talk to it (click to stop and release the RAM)'
+                        : localMoshi === 'loading'
+                        ? 'Starting the local Moshi model…'
+                        : 'Local voice model (Moshi, on this machine — true speech-to-speech, Apple Silicon)'
+                    }
+                    onClick={toggleLocalMoshi}
+                    disabled={localMoshi === 'loading'}
+                    whileHover={{ scale: localMoshi === 'loading' ? 1 : 1.12 }}
+                    whileTap={{ scale: localMoshi === 'loading' ? 1 : 0.9 }}
+                    className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
+                      localMoshi === 'running'
+                        ? 'text-[#f0968a] bg-[#f0968a]/10 border border-[#f0968a]/25 animate-pulse'
+                        : localMoshi === 'loading'
+                        ? 'text-white/30 cursor-wait'
+                        : 'text-white/40 hover:text-white/80 hover:bg-white/[0.05] cursor-pointer'
+                    }`}
+                    aria-label={localMoshi === 'running' ? 'Stop local Moshi' : 'Start local Moshi'}
+                    aria-pressed={localMoshi === 'running'}
+                  >
+                    <Cpu size={15} />
+                  </motion.button>
                   {[
                     { icon: <Plus size={16} />, title: 'Add attachment', action: () => fileInputRef.current?.click() },
                     { icon: <Paperclip size={15} />, title: 'Attach file', action: () => fileInputRef.current?.click(), active: attachedFiles.length > 0 },
@@ -4692,7 +5324,14 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
     </>)
 
     return (
-      <div className="grid gap-6 lg:grid-cols-[240px_1fr] font-mono-display">
+      <div
+        ref={rootGridRef}
+        className="grid gap-6 lg:grid-cols-[240px_1fr] font-mono-display"
+        style={{
+          paddingRight: previewDockPad,
+          transition: 'padding-right 500ms cubic-bezier(0.16, 1, 0.3, 1)',
+        }}
+      >
     {/* Side settings bar */}
     <div className="flex flex-col gap-4">
       {mobileMenuContent}
@@ -4779,6 +5418,10 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
+            style={{
+              marginRight: maxPreviewDockPad,
+              transition: 'margin-right 500ms cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
             className="flex-1 relative overflow-hidden rounded-xl border border-white/[0.08] flex flex-col"
           >
             {terminalChrome}
@@ -4927,7 +5570,6 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
         authUrl={permissionDialog.authUrl}
         onConnect={() => {
           setPermissionDialog({ isOpen: false, service: 'google' })
-          // Refresh to check connection status
           window.location.reload()
         }}
       />
@@ -4970,7 +5612,6 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
         initialContent={documentEditor.content}
         instruction={documentEditor.instruction}
         onSave={(content) => {
-          // Send the edited content back to chat
           const msg: ChatMessage = {
             role: 'assistant',
             text: `Here's the edited document:\n\n${content}`,
@@ -5046,159 +5687,34 @@ Roast Engine  : ${isRoasting ? 'ACTIVE' : 'DISABLED'}`
         }}
       />
 
-      {/* ─── Live Code Preview panel ─── */}
-      {/* Portaled to <body> so it escapes ancestor transforms/overflow and always
-          renders ABOVE the app header + terminal chrome (viewport-level stacking). */}
-      {createPortal(
-        <>
-          {/* Floating reopen tab — shown when a preview exists but the panel is
-              closed so the user can summon it back without re-asking the model. */}
-          {preview && !previewOpen && (
-            <motion.button
-              type="button"
-              initial={{ opacity: 0, x: 30 }}
-              animate={{ opacity: 1, x: 0 }}
-              onClick={() => {
-                previewDismissedRef.current = false
-                setPreviewOpen(true)
-              }}
-              className={`fixed top-1/2 -translate-y-1/2 right-0 z-[9997] flex items-center gap-2 rounded-l-xl border border-r-0 border-white/15 bg-[#0c0d14]/95 backdrop-blur-xl px-3 py-2.5 text-white/70 hover:text-white hover:border-white/30 shadow-[0_8px_30px_rgba(0,0,0,0.6)] cursor-pointer transition-opacity ${sideDrawerOpen ? 'pointer-events-none opacity-0' : ''}`}
-            >
-              <Monitor size={14} className="text-white/70" />
-              <span className="text-[10px] font-mono uppercase tracking-widest">Preview</span>
-            </motion.button>
-          )}
-
-          {/* Side panel */}
-          {preview && (
-            <AnimatePresence>
-              {previewOpen && (
-                <motion.div
-                  initial={{ opacity: 0, x: 48 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 48 }}
-                  transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                  className={`fixed top-2 bottom-2 right-2 z-[9998] w-[min(46vw,640px)] min-w-[360px] rounded-2xl border border-white/15 bg-[#0c0d14]/97 shadow-[0_20px_70px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden backdrop-blur-2xl transition-opacity ${sideDrawerOpen ? 'pointer-events-none opacity-0' : ''}`}
-                >
-                  {/* Panel header */}
-                  <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3.5 py-2.5 bg-white/[0.02]">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Monitor size={13} className="text-white/70 shrink-0" />
-                      <span className="text-[10px] font-mono uppercase tracking-widest text-white/60 truncate">
-                        {preview.title || 'Live Preview'}
-                      </span>
-                      {preview.isProject && (
-                        <span className="shrink-0 rounded-full bg-white/[0.08] border border-white/15 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-widest text-white/70">
-                          {preview.files?.length ?? 0} files
-                        </span>
-                      )}
-                      {storedFileCount > 0 && (
-                        <span className="shrink-0 rounded-full bg-white/[0.08] border border-white/15 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-widest text-white/70">
-                          saved {storedFileCount}
-                        </span>
-                      )}
-                      <span className="shrink-0 rounded-full bg-white/[0.08] border border-white/15 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-widest text-white/70">
-                        running
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={zipCorrespondingPreview}
-                        disabled={!storedCodeTask}
-                        title="Download these files as a .zip"
-                        className={`flex items-center gap-1.5 rounded-xl border px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest transition-all cursor-pointer ${
-                          storedCodeTask
-                            ? 'border-white/15 text-white/75 hover:text-white hover:border-white/30 hover:bg-white/[0.08]'
-                            : 'border-white/10 text-white/30 cursor-not-allowed'
-                        }`}
-                      >
-                        <Download size={10} />
-                        ZIP
-                      </button>
-                      <a
-                        href={previewAbsoluteUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Open in a new tab"
-                        className="flex items-center gap-1.5 rounded-xl border border-white/15 px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-white/75 hover:text-white hover:border-white/30 hover:bg-white/[0.08] transition-all cursor-pointer"
-                      >
-                        <ExternalLink size={10} />
-                        Open new tab
-                      </a>
-                      <button
-                        type="button"
-                        onClick={copyPreviewUrl}
-                        title="Copy preview URL"
-                        className="flex items-center gap-1 rounded-xl border border-white/10 px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-white/50 hover:text-white hover:border-white/25 transition-all cursor-pointer"
-                      >
-                        {previewCopied ? <Check size={10} className="text-white/85" /> : <Copy size={10} />}
-                        {previewCopied ? 'Copied' : 'URL'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPreviewFrameKey((k) => k + 1)}
-                        title="Reload preview"
-                        className="w-7 h-7 flex items-center justify-center rounded-xl border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition-all cursor-pointer"
-                      >
-                        <RefreshCw size={11} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          previewDismissedRef.current = true
-                          setPreviewOpen(false)
-                        }}
-                        title="Close preview"
-                        className="w-7 h-7 flex items-center justify-center rounded-xl border border-white/10 text-white/50 hover:text-white hover:border-white/25 hover:bg-white/[0.05] transition-all cursor-pointer"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* File tree strip (multi-file projects) */}
-                  {preview.isProject && preview.files && preview.files.length > 0 && (
-                    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none border-b border-white/10 px-3 py-1.5 bg-white/[0.015]">
-                      {preview.files.map((f) => (
-                        <span
-                          key={f.path}
-                          className="shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-white/50"
-                          title={f.path}
-                        >
-                          {f.path}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Preview body */}
-                  <div className="flex-1 min-h-0 bg-white relative">
-                    {/* NOTE: do not add allow-same-origin here. The code in this
-                        frame is written by an LLM and served from our own origin,
-                        so allow-scripts + allow-same-origin together let it reach
-                        window.parent.localStorage — every provider key and the
-                        auth token — and the two tokens combined are documented as
-                        removing protections "in the same way" as no sandbox at all.
-                        Without it the frame gets an opaque origin: parent access
-                        throws SecurityError, while relative fetch, forms, popups
-                        and pointer lock all still work. The backend mirrors this
-                        via a `Content-Security-Policy: sandbox` header on
-                        /api/preview, so the open-in-new-tab path is isolated too. */}
-                    <iframe
-                      key={previewFrameKey}
-                      title="ENZO live preview"
-                      src={preview.url}
-                      sandbox="allow-scripts allow-forms allow-modals allow-popups allow-pointer-lock"
-                      className="w-full h-full border-0"
-                    />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          )}
-        </>,
-        document.body,
+      {/* ─── Live Code Preview panel — its own component (components/terminal/) ─── */}
+      {/* Gated on the terminal tab: the component stays mounted across tabs so a
+          running task survives, but the portaled panel must not float over the
+          other tabs — it re-enters with its opening animation on return. */}
+      {activeTab === 'terminal' && (
+        <PreviewPanel
+          preview={preview}
+          open={previewOpen}
+          sideDrawerOpen={sideDrawerOpen}
+          maximized={maxShown}
+          lowPower={lowPower}
+          copied={previewCopied}
+          frameKey={previewFrameKey}
+          storedTask={storedCodeTask}
+          storedFileCount={storedFileCount}
+          absoluteUrl={previewAbsoluteUrl}
+          onZip={zipCorrespondingPreview}
+          onCopyUrl={copyPreviewUrl}
+          onReload={() => setPreviewFrameKey((k) => k + 1)}
+          onClose={() => {
+            previewDismissedRef.current = true
+            setPreviewOpen(false)
+          }}
+          onReopen={() => {
+            previewDismissedRef.current = false
+            setPreviewOpen(true)
+          }}
+        />
       )}
     </div>
   )

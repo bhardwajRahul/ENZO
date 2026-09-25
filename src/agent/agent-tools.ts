@@ -811,6 +811,8 @@ export async function* fetchOpenAIStream(
 
   // Idle timeout: if the provider stops sending bytes for 45s, abort so a
   // wedged/hung connection can never leave the SSE stream stuck mid-response.
+  // Armed BEFORE the fetch too — a hung connect (NIM cold starts never send
+  // headers) must abort as well, not just a mid-stream stall.
   const controller = new AbortController();
   const IDLE_TIMEOUT_MS = 45_000;
   let idleTimer: NodeJS.Timeout | null = null;
@@ -818,6 +820,7 @@ export async function* fetchOpenAIStream(
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => controller.abort(), IDLE_TIMEOUT_MS);
   };
+  resetIdle();
 
   const response = await fetch(url, {
     method: 'POST',
@@ -1284,6 +1287,7 @@ export async function runAgentLoop(a: AgentLoopArgs): Promise<boolean> {
     // inside an open code fence. The continuation prompt keeps the already
     // streamed text as an assistant turn, so the model continues rather than
     // restarting. streamTurn, called with isFinal, writes each step's own text.
+    let retryRounds = 0;
     while ((truncated || (a.mode === 'coding' && replyLooksTruncated(content))) && rounds < maxContinuations) {
       rounds++;
       console.log(`[agent-loop] auto-continue round ${rounds} (truncated=${truncated})`);
@@ -1299,7 +1303,21 @@ export async function runAgentLoop(a: AgentLoopArgs): Promise<boolean> {
         const next = await streamTurn(false, true, false);
         truncated = next.truncated;
         content += next.content;
-      } catch {
+      } catch (contErr: any) {
+        // A mid-build 413 (TPM) or stall must not end the build early — the
+        // build only stops when the code is actually done. Wait out the limit
+        // and re-run the SAME continuation round (the [CONTINUATION] turn is
+        // already in messages), bounded so a dead provider can't loop forever.
+        const msg = String(contErr?.message ?? contErr);
+        const status = Number(contErr?.status ?? 0);
+        const retryable = status === 413 || /abort|stall|tokens per minute|TPM|Request too large|rate_limit_exceeded/i.test(msg);
+        if (retryable && retryRounds < 3) {
+          retryRounds++;
+          rounds--;
+          a.ctx.onStep(`[SYSTEM: ${status === 413 ? 'Token limit hit' : 'Provider stalled'} — waiting it out, then continuing the build…]`);
+          await new Promise((r) => setTimeout(r, status === 413 ? 20_000 : 8_000));
+          continue;
+        }
         break;
       }
     }
@@ -1397,9 +1415,21 @@ export async function runAgentLoop(a: AgentLoopArgs): Promise<boolean> {
     return emitFinalAnswer({ content: '', toolCalls: [], truncated: false });
   } catch (err: any) {
     console.error('[agent-loop] Error:', err?.message ?? err);
+    const errMsg = String(err?.message ?? err);
+    const stalled = /abort|stall/i.test(errMsg);
+    // A 413/TPM block is per-request-size, not a bad moment — a same-model
+    // retry can only repeat it, and the raw error must never reach the user.
+    const quota = Number(err?.status) === 413 || /tokens per minute|TPM|Request too large|rate_limit_exceeded/i.test(errMsg);
+    if ((stalled || quota) && !wroteAnything) {
+      // Dead or TPM-blocked upstream before any content reached the user —
+      // surface nothing here and let the chat-level fallback pick a live
+      // provider. A same-provider retry just burns the attempt; falling back
+      // after content was already written would duplicate the reply.
+      return false;
+    }
     if (!wroteAnything) {
       // Instead of returning false (which triggers hallucination fallthrough),
-      // try one last time with no tools as a clean text response
+      // try one last time with no tools as a clean text response.
       try {
         await streamTurn(false, true, false);
         return wroteAnything;

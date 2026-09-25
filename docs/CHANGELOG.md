@@ -1,5 +1,139 @@
 # ENZO Project Changelog
 
+## [2026-09-25] — coding mode: auto-shift from any mode, resume your earlier builds, preview-only launch
+
+All uncommitted (awaiting review). Backend tsc + frontend tsc + vite build green; auto-shift live-verified; the dom-refs check unit-tested (4 cases).
+
+### What was broken / missing
+
+1. **A build request inside thinking/research stayed in that mode.** Auto-mode only consulted its router for normal-mode messages — "code me a landing page" typed in thinking mode ran through the thinking pipeline instead of the coding build.
+2. **Coming back to an earlier build didn't pick up from it.** Saved projects all carried the hardcoded title "ENZO Project", and "do the same" / "make it again" / "open my cafe page" phrasing never matched the My Projects store — a returning user got a fresh rebuild (or nothing) instead of a resume.
+3. **The classic silent-page hallucination wasn't checked.** app.js wiring `getElementById('submit-btn')` for an id the HTML never emits passed every existing check — the build "passed", the button was dead.
+
+### The fix
+
+- **Auto-shift moves the cognitive-mode picker itself** (frontend `event: mode` handler): when the backend routes a turn to coding, the mode picker state moves too — the next message runs in the same mode without a manual re-pick. All four text modes are behavioral, so no session swap is involved (image-gen stays manual-only; the backend never auto-routes to it).
+- **Preview lifecycle fixed — opens only when the build is ready** (frontend): mid-stream registrations (`syncPreviewFromText` on every streamed tick) used to open the panel the moment the first file landed — now they update the preview **silently** (`commitPreview(data, silent)`) and the panel opens on the build-verify verdict (`event: build` done/passed → an effect opens it) or the stream's end. The stale-file bug is fixed with it: **a session with no project starts with a clean preview** (the session-follow effect clears it — the previous session's build no longer lingers in a new chat), and a session WITH its own build shows that project's preview when you switch to it. The floating Preview tab no longer renders with nothing to show (it was clickable into an empty panel — the "preview button doesn't work" report); it appears only when a real preview exists, and the panel already carries **Open new tab** + a URL copy button linking to the built page's address.
+- **The Llama reset on every refresh fixed** (frontend): the boot restore restored session, messages and chatMode but never the model; the separate model-restore effect guarded for the catalog arriving (`!catalog?.length → return`) but its deps (`[activeSessionId]`) never re-ran it — the catalog lands *after* boot, so the restore missed forever and every refresh reset the model to the Llama default. Deps now include `catalog.length`: the restore re-runs the moment the catalog arrives. Safe on later syncs — a session whose model already matches is a no-op, and a manual model switch mints a new session whose model matches too.
+- **Auto-shift to coding from any mode** (`index.ts`): the unmistakable-intent heuristic (a build verb + a software artifact) now also overrides thinking/research — an explicit "code me X" flips the turn to coding instantly, before the thinking/research pipelines can touch it. The LLM decider stays normal-only, so ambiguous asks never surprise-flip a mode the user chose on purpose. The frontend's mode chip reflects what ran via the existing `event: mode` frame.
+- **Projects carry the task as their title** (frontend save): "code me a webpage for a cafe" now saves as that task (80-char slice), not "ENZO Project" — the My Projects drawer shows real names and matching has something to match against.
+- **Resume + launch phrasing matched** (frontend send handler): "do the same" / "again" / "open-launch-show my page (in preview)" now fall back to the session's pinned project when the title matcher misses. Launch-only requests short-circuit entirely: **no model call, no regeneration** — the panel opens straight onto the saved build with a local confirmation line. A build verb anywhere in the prompt ("make the hero bigger and relaunch") still flows through the normal edit path.
+- **Dom-refs build check** (`src/core/build-verify.ts`): every element id the JS references (`getElementById` / `querySelector('#id')`) must exist in the HTML or the build FAILs and the repair round hands the missing ids back. Quoted simple ids only — template-literal ids (`card-${i}`) and variable lookups are skipped (they can be dynamic), class selectors aren't checked. The coding prompt's BUILD VERIFICATION clause now says the same so the model pre-empts the check.
+
+### Verified
+
+- Auto-shift live: "code me a webpage for a cafe" in normal mode → `(heuristic) mode=coding` instantly; "code me a landing page" in thinking mode → `(heuristic override from thinking) mode=coding`.
+- Dom-refs check unit-tested: missing ids fail with their names; declared ids pass; template-literal/variable lookups and class selectors don't false-positive.
+- Backend tsc, frontend tsc, vite build green; backend restarted and healthy.
+
+## [2026-09-24] — README SEO pass + the minimal GitHub star button
+
+All uncommitted (awaiting review).
+
+- **H1** → "ENZO — open-source, self-hosted AI workspace" (one natural keyword phrase; emoji-stuffed headers deliberately skipped — that's the AI-slop signal). The "10 seconds" install claim skipped too — the pull is ~150MB plus extraction.
+- **Docker one-liner** in Quickstart, corrected: the real image (`ghcr.io/theguysudo/enzo:latest`), port 5001, the three real named volumes mounted (`enzo-projects:/app/generated-projects`, `enzo-skills:/app/src/skills/skills`, `enzo-memory:/app/data`) so the first-key claim and all data survive. Clone + compose stays the primary path — it's what cloners actually use.
+- **Named competitors paragraph** under "Why ENZO stands out": LibreChat, AnythingLLM, LobeChat, Dify / Flowise — the long-tail "X alternative" search traffic, in the no-hype voice.
+- **"Where ENZO has been mentioned"** section (organic only — his own Reddit promo and HN submissions excluded, no third-party Reddit posts exist): GitHub Trending (LLM topic, Sep 9–10), The Daily Diff (Sep 19), OpenAlternative's live listing, the 4 merged curated lists.
+- **Stale nav anchor** fixed (`#whats-new-in-v130` → `#whats-new-in-v140`).
+- **Minimal GitHub star button** in the floating nav's right controls (28px ghost circle, Github icon 13px, hover lift, every view) — links to the repo.
+- **Owner action left**: upload `docs/assets/social-preview.png` (1280×640, exact spec, already in the repo) in Settings → Social preview — the live og:image is still GitHub's default gray card (web-UI only, no API exists).
+
+## [2026-09-25] — the Groq 413 TPM error never surfaces · builds survive token limits
+
+All uncommitted (awaiting review). Live-verified by reproducing the exact failing case (a large-context coding request on `groq/openai/gpt-oss-120b`, Requested 9188 vs Limit 8000 TPM).
+
+### What was broken
+
+`[Server Error: 413 {"error":{"message":"Request too large … tokens per minute (TPM): Limit 8000, Requested 18552 …"}}]` reached the terminal through two paths:
+
+1. **The coding dispatcher attempted Groq on a request its free-tier TPM could never hold.** Groq's free tier enforces 8000 tokens per minute per model — a coding request with a real conversation behind it (prompt estimate + the 32K segment target) is a guaranteed 413, and the raw error surfaced when the fallback chain then cycled on a keyless Pollinations slot instead of reaching OpenRouter.
+2. **A mid-build 413 silently ended the build.** The agent tool-loop's continuation rounds (the "keep generating until the code is done" loop) wrapped their turn in `catch { break }` — a 413 or a stall mid-build broke the loop and the build stopped with incomplete code, no notice, nothing.
+
+### The fix
+
+- **Pre-flight TPM guard** (`index.ts`, beside the parked-provider skip): before dispatching, the request's prompt estimate (system + user + continuation chars ÷ 3.5) + the route's max_tokens is checked against a per-provider TPM table (`PROVIDER_TPM_CAP` — groq 8000, measured). A provider that can only ever 413 is skipped with a clean notice ("groq's token budget can't hold this request — routing to a provider that can...") and the next route takes the attempt — no wasted attempt, no raw error.
+- **The chain reaches a live lane**: the prefix/default fallback queues now include `openrouter/free` (the live free router, 200 when specific lanes are dead/limited) right after the primary — Pollinations (now key-walled, 401 keyless) is health-ordered to the back instead of burning retry cycles in slot two.
+- **Mid-build limits resume instead of stopping** (`agent-tools.ts`): the continuation loop's catch now detects a 413/TPM/stall, waits it out (20s for a token limit, 8s for a stall — the same [CONTINUATION] turn is already in messages, so the model resumes from the exact stop point), and re-runs the round — bounded at 3 waits so a dead provider can't loop forever. The build only stops when the code is actually done (the existing truncation + incomplete-reason nets on top of it).
+- **Quota errors are "not handled" upstream** (`agent-tools.ts`): a 413/TPM block with nothing written yet returns `false` so the chat-level fallback picks a live provider — a same-model retry can only repeat a size rejection, and the raw error never reaches the user.
+- **The last-resort end is graceful** (`index.ts`): if every route still exhausts on a token limit, the terminal gets a resume notice ("The build hit a provider token limit and stopped early. Ask ENZO to continue...") instead of the raw 413 JSON — with partial output preserved.
+
+### Verified
+
+The exact failing case re-run: raw 413 in the output **0**, one clean TPM-skip notice, the build streamed real cafe code via the fallback (210 chunks); `tsc --noEmit` green; the same guards cover normal-mode requests over their provider's budget.
+
+## [2026-09-25] — project access fixed: the 403 on every saved project
+
+All uncommitted (awaiting review). Live-verified against the running backend.
+
+### What was broken
+
+`{"error":"forbidden","message":"You do not have access to this project"}` on saved-project access had two independent causes, both in `src/projects/project.ts`:
+
+1. **The headerless preview iframe could never pass the gate.** The vault session token is time-windowed (12h) and the ownership check was a raw string compare against the token stored at save time — but the project's preview iframe (and the generated app's own API calls to `window.ENZO_BACKEND`, and its css/js fetches) are **headerless by nature**: a sandboxed iframe cannot attach an `x-vault-token`, so `checkProjectOwnership(id, undefined)` returned false unconditionally. Any multi-file project preview 403'd the moment the ownership middleware covered these routes.
+2. **The owner was locked out by the token window.** For the routes that DO receive a token (delete, manifest), the raw compare only matched within the same 12h window the project was saved in — the next window (or a project saved with the older short-token formula) 403'd the owner's own browser. Legacy projects with no manifest at all 403'd everyone, forever.
+
+### The fix
+
+- **The headerless document routes are credential-free** (`GET /:id`, `/:id/`, `/:id/*splat`, the `/backend` proxies): the ownership middleware is removed and the capability model applies — possession of the unlisted project id is the grant, exactly the documented model of `/api/preview` (whose GET path was already credential-free for the same reason). In exchange, the served entry pages now send the **`Content-Security-Policy: sandbox` response header** — the same opaque-origin isolation the preview iframe already enforces via its attribute, so the open-in-new-tab path can't run LLM-generated code on the app's own origin with storage access.
+- **Owned operations keep the gate, without the lockout** (delete, manifest): `checkProjectOwnership` is now "holds a currently-valid vault token" (the current or previous 12h window, constant-time) — on this single-operator box that is the same browser that holds a provider key; the raw save-time compare was fully redundant (it could only pass inside the save window anyway) and is gone, along with its now-unused `readProjectMeta` reader.
+- The vault token formula moved to **`src/core/vault-token.ts`** (new) — one copy shared by `index.ts` (the routes) and `project.ts` (the ownership check) instead of a circular import or a drifting duplicate.
+
+### Verified
+
+Legacy project (no manifest) + valid token → 200; manifested project + valid token → 200 (this also rescued projects saved with the old short-token formula); no token → 403 (the gate still rejects tokenless requests); index headerless → 302 (nested-entry redirect); served documents carry the sandbox header. Backend `tsc --noEmit` green.
+
+## [2026-09-24] — model reliability overhaul · tab-switch task fix · agents tab mono + neural graph · preview panel black paper · file split
+
+All uncommitted (awaiting review). Overnight debug pass — every cognitive mode tested end-to-end with live keys.
+
+### Model reliability — nothing hangs forever anymore
+
+- **Stall guards on every upstream stream** (`index.ts`): all 9 provider streamers (Pollinations, OpenRouter, HuggingFace, NVIDIA, LLM7, the OpenAI-compat path that Google/Puter/Cloudflare delegate to) had NO abort signal — a cold NIM deployment, a provider outage or a retired model hung with no bytes and held the browser's request open indefinitely, so autoFallback never got its chance (measured: a `deepseek-v4.1-flash` request produced zero output in 110s). A shared `stallGuard()` (45s to first byte, 60s idle between chunks, re-armed per chunk) now aborts the upstream and the dispatcher's attempt loop picks the next provider. Verified: the stall fires at 45s and the fallback completes via `openrouter/free`.
+- **Groq SDK timeout capped** (`index.ts`): the chat path created the Groq client with the SDK's 10-minute default — a hung request wedged for 10 minutes. Now `timeout: 120_000, maxRetries: 0` (the dispatcher does its own retries).
+- **Agent tool-loop stall handling** (`src/agent/agent-tools.ts`): the loop's idle timeout armed only AFTER the fetch resolved, so a hung connect (the exact NIM case) never aborted — now armed before the fetch. And the outer catch's last-ditch "one more try with no tools" re-tried the SAME dead provider (another 45s burn); a stall/abort now returns `false` so the chat-level fallback picks a live provider instead (falling back after content was already written would duplicate the reply, so that case still surfaces the error).
+- **Health-aware fallback ordering** (`index.ts`): `getFallbackQueue` pushes models the health tracker marks offline to the back — a dead id cost an attempt + a stall window before the next provider.
+- **Dead fallback ids replaced with live ones**: `groq/qwen/qwen3.6-27b` (EOL on Groq) → `qwen3.8-27b`; `openrouter/z-ai/glm-5.2:free` (404 no-tool-endpoints) → `openrouter/free` (the free router, live-verified 200 when specific `:free` ids 429/retire); the decider models `nvidia/nemotron-nano-9b-v2:free` (404) and `nvidia/meta/llama-3.1-8b-instruct` (410 EOL) → live ids; the Groq decider moved to `gpt-oss-120b` (the 20b sibling fails the decider's JSON prompt too often). The agent-loop heuristic fallback order updated the same way, and Pollinations/HF slots now require an actual key (their chat endpoints key-walled — 401 without one).
+- **402 → free-only candidates**: a 402 (insufficient credits — a free-tier key) narrows the fallback shortlist to `free === true` models for the whole retry, so paid candidates can't 402 again.
+- **Legacy saved-history model ids repaired** (`TerminalSection.tsx` `getRealModelId`): `llama-3.3-70b` → `groq/openai/gpt-oss-120b`, `qwen3-32b` → `groq/qwen/qwen3.8-27b` — both Groq originals were retired, so resuming an old chat no longer targets a dead model.
+- **Catalog refreshed + a stale fossil removed**: the model catalog cache was 4 weeks old (Aug 28) — 73 of 108 cached NVIDIA models had since been decommissioned (410s), which is where the "Nvidia became so slow / didn't get the result" reports landed. Re-synced via a vault key save (NVIDIA verification now prunes phantom ids); the misleading root-level `model-cache.json` fossil (untracked, unreferenced — the real one lives at `src/models/`) is deleted.
+
+### Keys — the "token error" root cause + normalization
+
+- **The doubled-key diagnosis**: the pasted Groq key was the same key concatenated twice (`gsk_…gsk_…`) — the single copy validates 200, the double 401. The `.env` vault held the correct single key; the browser device vault (which receives pasted keys and travels per-request) held the double → the terminal's token error. Fixed at the source: the browser vault row gets the single key (browser test), and both save paths now normalize.
+- **Double-paste normalization** (`synthetic-nature/src/lib/keyStore.ts` + `src/core/env-manager.ts`): a paste containing its provider marker twice (`gsk_` / `nvapi` / `sk-or-v1`) is cut at the second marker on save — a doubled paste can never be stored again.
+- **`.env` EXA_API_KEY added** (was missing; the key validates 200) via the vault API, which also re-synced the catalog. The stored Gemini key and the pasted Google key both 401 (`UNAUTHENTICATED` in query + header form) — that provider needs a fresh AI Studio key; the fallback chain covers its absence.
+
+### Tab-switch no longer kills a running task
+
+`App.tsx` rendered `{activeTab === 'terminal' && <TerminalSection/>}` — switching to Agents/Vault/Marketplace mid-generation unmounted the component and the task died without any click. TerminalSection now stays mounted across tabs (hidden, not unmounted), and its preview portal is gated on the terminal tab (the component stays alive, but the portaled panel must not float over the other tabs — it re-enters with its opening animation on return).
+
+### Terminal UI
+
+- The copy action under a reply is icon-only (a circular icon button, title tooltip) — no "Copy" text pill.
+- The assistant reply marker is a plain "›" glyph instead of the lightning-bolt avatar icon.
+
+### Agents tab — mono theme + automatic connect + the neural-layer Graph
+
+- **Mono**: all coral/salmon accents (`#f0968a`, `#c96b62`) are gone — black/white only.
+- **Contrast**: the dimmest text tiers lifted from 35–45% opacity to 50–55% and borders from 10% to 15% — "the text is not visible / buttons are too vague" fix.
+- **Backend connect is automatic**: the manual Connect/Reconnect button is removed; a mount effect mints the vault session token on arrival (a browser without a provider key lands on "blocked" with a note pointing at the Vault tab). The status dot pulses.
+- **Graph button + `AgentsGraph.tsx` (new)**: opens a full "Neural layer" overlay — every saved agent as a node, its strongest learned associations as leaves sized by weight (the backend's per-agent Hebbian state from `GET /api/agents/:id/neural`), training cycles + deep tunes in the header. The state lives server-side per agent, so it survives logins and returns. Animated: nodes and links draw in staggered (framer), mono throughout.
+
+### Preview panel — black paper redesign (first half of the session)
+
+The live code-preview side panel rebuilt per spec: opaque near-black base with wrinkle + grain SVG textures (`feTurbulence` + `feDiffuseLighting`, rendered as an inline `<svg><rect>` so Safari rasterizes them), slow drifting smear blobs (off on low-power), deep layered shadows, a faint edge vignette, and a one-shot sheen sweep on open (screen blend — it reads only on the dark paper, never washes the preview). Mild glass only (the header/strip backdrop). The preview body stays a clean white print mounted on the paper. Choreography: the panel lands with a scale+blur settle and staggers header→strip→body in, the iframe last; the reopen tab slides in and the panel's vertical centering lives inside framer's transform (an inline transform was defeating the old `-translate-y-1/2` class). The panel no longer opens "out of nowhere": when it opens, the terminal reflows (animated padding in normal mode, animated margin in maximized) to sit flush beside it, measured against the real panel width per viewport. The panel top clears the floating header in normal mode and aligns with the fullscreen frame in maximized. The drawer-fade bug is fixed (a framer inline opacity always beat the Tailwind `opacity-0` class — the `dimmed` variant replaces it). The iframe sandbox rationale comment is kept verbatim.
+
+### File split — big files into smaller, specific ones
+
+- `src/lib/codeExtract.ts` (new, 115 lines): the pure parsers over coding replies (`extractPreviewHtml`, `extractProjectFiles` with its mid-file salvage, `codingReplyIncompleteReason`) — no React, no network, testable in isolation.
+- `src/components/terminal/PreviewPanel.tsx` (new, 327 lines): the whole preview panel (portal, paper layers, choreography, props-driven) out of TerminalSection.
+- `src/components/AgentsGraph.tsx` (new, 179 lines): the neural-layer tree.
+- `TerminalSection.tsx` is ~370 lines lighter and the pieces are import-wired; type-check and vite build green after each step.
+
+### Rive slot
+
+`@rive-app/react-canvas` added + `src/components/RiveMark.tsx` (new): renders a small Rive canvas only when a `.riv` file exists at `public/rive/<name>.riv` — no file, no element, no dead space; drop one in and it lights up. Mounted in the agents tab header. anime.js and GSAP were already wired (homepage entrance / terminal chrome).
+
 ## [2026-09-17] — Google Colab setup · Docker auto dependencies install mode · in-chat file converter & research-table extractor
 
 All three uncommitted (awaiting review).

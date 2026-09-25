@@ -17,6 +17,8 @@ import type { Dispatch, SetStateAction } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { mintVaultToken } from '../lib/vaultToken'
 import { getProviderKeys } from '../lib/keyStore'
+import AgentsGraph from './AgentsGraph'
+import RiveMark from './RiveMark'
 
 // ── Types (mirror the backend's AgentEntry / GatherResult) ───────────────────
 
@@ -196,6 +198,7 @@ export default function AgentsSection() {
     () => (sessionStorage.getItem('enzo.vault.token') ? 'connected' : 'idle'),
   )
   const [accessNote, setAccessNote] = useState('')
+  const [graphOpen, setGraphOpen] = useState(false)
 
   const refresh = useCallback(async () => {
     const r = await api('/api/agents')
@@ -225,12 +228,21 @@ export default function AgentsSection() {
 
   useEffect(() => { void refresh() }, [refresh])
 
+  // Connecting happens automatically — the user never presses a button for it.
+  // A mint is one cheap call; a browser without a provider key lands on
+  // 'blocked' and the note points at the Vault tab.
+  useEffect(() => {
+    if (access !== 'idle') return
+    void connectBackend()
+  }, [access, connectBackend])
+
   return (
     <div className="w-full">
       {/* Header */}
       <div className="mb-8 flex items-end justify-between gap-4">
         <div>
-          <div className="font-mono-display text-[10px] uppercase tracking-[0.3em] text-white/40">
+          <div className="flex items-center gap-2 font-mono-display text-[10px] uppercase tracking-[0.3em] text-white/55">
+            <RiveMark />
             Workspace · Custom Agents
           </div>
           <h2 className="mt-2 text-2xl font-semibold text-white">
@@ -245,12 +257,17 @@ export default function AgentsSection() {
           {hasDraft && (
             <button
               onClick={() => setView('create')}
-              className="rounded-full border px-4 py-2.5 font-mono-display text-[11px] uppercase tracking-[0.2em] transition hover:bg-white/5"
-              style={{ borderColor: 'rgba(240,150,138,0.35)', color: '#f0968a' }}
+              className="rounded-full border border-white/20 px-4 py-2.5 font-mono-display text-[11px] uppercase tracking-[0.2em] text-white/75 transition hover:bg-white/5 hover:text-white"
             >
               Resume draft
             </button>
           )}
+          <button
+            onClick={() => setGraphOpen(true)}
+            className="rounded-full border border-white/15 bg-white/[0.06] px-5 py-2.5 font-mono-display text-[11px] uppercase tracking-[0.2em] text-white transition hover:bg-white/[0.12]"
+          >
+            Graph
+          </button>
           <button
             onClick={() => setView('create')}
             className="rounded-full border border-white/15 bg-white/10 px-5 py-2.5 font-mono-display text-[11px] uppercase tracking-[0.2em] text-white transition hover:bg-white/20"
@@ -260,40 +277,26 @@ export default function AgentsSection() {
         </div>
       </div>
 
-      {/* Backend access — agent routes are gated for security (verifyVaultAccess) */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4">
-        <div className="flex items-start gap-3">
-          <span
-            className="mt-1 h-2 w-2 shrink-0 rounded-full"
-            style={{ backgroundColor: access === 'connected' ? '#f0968a' : 'rgba(255,255,255,0.25)' }}
-          />
-          <div>
-            <div className="text-sm font-medium text-white">
-              {access === 'connected' ? 'Backend connected' : 'Backend access'}
-            </div>
-            <p
-              className="mt-0.5 max-w-md text-xs leading-relaxed"
-              style={{ color: access === 'blocked' ? '#c96b62' : 'rgba(255,255,255,0.45)' }}
-            >
-              {accessNote ||
-                (access === 'connected'
-                  ? 'Verified from this browser — creating, running and saving agents is unlocked.'
-                  : 'Agent routes are locked for security. Connect to prove this browser holds a provider key — no master key or terminal needed.')}
-            </p>
+      {/* Backend access — agent routes are gated for security (verifyVaultAccess).
+          Connects automatically on mount; no button — the user never intervenes. */}
+      <div className="mb-6 flex flex-wrap items-center gap-4 rounded-2xl border border-white/15 bg-white/[0.04] px-5 py-4">
+        <span
+          className="h-2 w-2 shrink-0 animate-pulse rounded-full"
+          style={{ backgroundColor: access === 'connected' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.25)' }}
+        />
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-white">
+            {access === 'connected' ? 'Backend connected' : access === 'connecting' ? 'Connecting…' : 'Backend access'}
           </div>
+          <p className="mt-0.5 max-w-md text-xs leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
+            {accessNote ||
+              (access === 'connected'
+                ? 'Verified from this browser — creating, running and saving agents is unlocked.'
+                : access === 'blocked'
+                  ? 'No provider key found on this device. Add one in the Vault tab — connecting happens on return.'
+                  : 'Verifying this browser holds a provider key — no master key or terminal needed.')}
+          </p>
         </div>
-        <button
-          onClick={connectBackend}
-          disabled={access === 'connecting'}
-          className="shrink-0 rounded-full px-5 py-2 font-mono-display text-[11px] uppercase tracking-[0.2em] transition disabled:opacity-60"
-          style={
-            access === 'connected'
-              ? { border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.85)' }
-              : { background: '#f0968a', color: '#0b0b0b' }
-          }
-        >
-          {access === 'connecting' ? 'Connecting…' : access === 'connected' ? 'Reconnect' : 'Connect'}
-        </button>
       </div>
 
       {view === 'list' && (
@@ -320,6 +323,10 @@ export default function AgentsSection() {
           onAgentChanged={(a) => setDetail(a)}
         />
       )}
+
+      <AnimatePresence>
+        {graphOpen && <AgentsGraph onClose={() => setGraphOpen(false)} />}
+      </AnimatePresence>
     </div>
   )
 }
@@ -342,10 +349,10 @@ function AgentList({
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="rounded-2xl border border-white/10 bg-white/[0.04] p-10 text-center"
+        className="rounded-2xl border border-white/15 bg-white/[0.04] p-10 text-center"
       >
         <div className="mx-auto max-w-md">
-          <div className="font-mono-display text-[10px] uppercase tracking-[0.3em] text-white/40">
+          <div className="font-mono-display text-[10px] uppercase tracking-[0.3em] text-white/55">
             No agents yet
           </div>
           <p className="mt-3 text-sm text-white/60">
@@ -366,7 +373,7 @@ function AgentList({
           layout
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="group rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition hover:border-white/20"
+          className="group rounded-2xl border border-white/15 bg-white/[0.04] p-5 transition hover:border-white/20"
         >
           <div className="flex items-start justify-between gap-3">
             <button onClick={() => onOpen(a)} className="min-w-0 flex-1 text-left">
@@ -401,7 +408,7 @@ function AgentList({
               {a.model.split('/').pop()}
             </span>
             {a.tools.slice(0, 3).map((t) => (
-              <span key={t} className="rounded-full bg-white/5 px-2.5 py-0.5 font-mono-display text-[9px] uppercase tracking-wider text-white/45">
+              <span key={t} className="rounded-full bg-white/5 px-2.5 py-0.5 font-mono-display text-[9px] uppercase tracking-wider text-white/55">
                 {TOOL_LABELS[t as ToolName] || t}
               </span>
             ))}
@@ -412,7 +419,7 @@ function AgentList({
             )}
           </div>
 
-          <div className="mt-3 flex items-center justify-between text-[11px] text-white/40">
+          <div className="mt-3 flex items-center justify-between text-[11px] text-white/55">
             <div className="flex gap-2">
               {a.memory.length > 0 && <span className="text-white/50">Learned: {a.memory.length}</span>}
               {a.knowledge.length > 0 && <span>Knowledge: {a.knowledge.length}</span>}
@@ -422,7 +429,7 @@ function AgentList({
 
           <button
             onClick={() => onOpen(a)}
-            className="mt-4 w-full rounded-lg border border-white/10 bg-white/[0.06] py-2 font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/80 transition hover:bg-white/15"
+            className="mt-4 w-full rounded-lg border border-white/15 bg-white/[0.06] py-2 font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/80 transition hover:bg-white/15"
           >
             Open
           </button>
@@ -569,14 +576,14 @@ function CreateAgentModal({
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
       {/* Autosave status — the build is mirrored to a device-local draft every second */}
-      <div className="mb-4 flex items-center justify-between text-[10px] text-white/40">
+      <div className="mb-4 flex items-center justify-between text-[10px] text-white/55">
         <span className="font-mono-display uppercase tracking-[0.2em]">
           {draftSavedAt ? `Draft saved · ${timeAgo(draftSavedAt)}` : 'Autosaves to this device every second'}
         </span>
         {(description.trim() || draft) && step !== 3 && (
           <button
             onClick={startOver}
-            className="rounded-full px-3 py-1 font-mono-display uppercase tracking-[0.2em] text-white/40 transition hover:text-white/80"
+            className="rounded-full px-3 py-1 font-mono-display uppercase tracking-[0.2em] text-white/55 transition hover:text-white/80"
           >
             Start over
           </button>
@@ -595,8 +602,8 @@ function CreateAgentModal({
       </div>
 
       {step === 1 && (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-          <label className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/40">
+        <div className="rounded-2xl border border-white/15 bg-white/[0.04] p-6">
+          <label className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/55">
             What should this agent do?
           </label>
           <textarea
@@ -605,10 +612,10 @@ function CreateAgentModal({
             rows={3}
             autoFocus
             placeholder="Every morning check my Gmail for invoices and draft replies for the urgent ones."
-            className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-black/30 p-4 text-sm text-white placeholder-white/25 outline-none focus:border-white/30"
+            className="mt-2 w-full resize-none rounded-xl border border-white/15 bg-black/30 p-4 text-sm text-white placeholder-white/25 outline-none focus:border-white/30"
           />
 
-          <label className="mt-5 block font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/40">
+          <label className="mt-5 block font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/55">
             Reference URLs (optional)
           </label>
           <textarea
@@ -616,7 +623,7 @@ function CreateAgentModal({
             onChange={(e) => setUrls(e.target.value)}
             rows={2}
             placeholder="https://docs.example.com/invoice-rules — up to 5, fetched and distilled into notes"
-            className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-white placeholder-white/25 outline-none focus:border-white/30"
+            className="mt-2 w-full resize-none rounded-xl border border-white/15 bg-black/30 p-3 text-xs text-white placeholder-white/25 outline-none focus:border-white/30"
           />
 
           <label className="mt-5 flex cursor-pointer items-center gap-3">
@@ -650,21 +657,21 @@ function CreateAgentModal({
       {step === 2 && (
         <div className="space-y-4">
           {/* Name + description */}
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-            <label className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/40">Name</label>
+          <div className="rounded-2xl border border-white/15 bg-white/[0.04] p-6">
+            <label className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/55">Name</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white outline-none focus:border-white/30"
+              className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 px-4 py-2.5 text-sm text-white outline-none focus:border-white/30"
             />
-            <label className="mt-4 block font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/40">Task</label>
+            <label className="mt-4 block font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/55">Task</label>
             <div className="mt-2 text-xs text-white/60">{description}</div>
           </div>
 
           {/* Expert manual */}
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
+          <div className="rounded-2xl border border-white/15 bg-white/[0.04] p-6">
             <div className="flex items-center justify-between">
-              <label className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/40">
+              <label className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/55">
                 Expert manual (system prompt)
               </label>
               <span className="font-mono text-[10px] text-white/30">{systemPrompt.length}/8000</span>
@@ -673,18 +680,18 @@ function CreateAgentModal({
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
               rows={10}
-              className="mt-2 w-full resize-y rounded-xl border border-white/10 bg-black/30 p-4 font-mono text-xs leading-relaxed text-white/90 outline-none focus:border-white/30"
+              className="mt-2 w-full resize-y rounded-xl border border-white/15 bg-black/30 p-4 font-mono text-xs leading-relaxed text-white/90 outline-none focus:border-white/30"
             />
           </div>
 
           {/* Tools */}
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-            <label className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/40">
+          <div className="rounded-2xl border border-white/15 bg-white/[0.04] p-6">
+            <label className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/55">
               Tools this agent may use
             </label>
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
               {(Object.keys(TOOL_LABELS) as ToolName[]).map((t) => (
-                <label key={t} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs transition ${tools.includes(t) ? 'border-white/40 bg-white/10 text-white' : 'border-white/10 text-white/50 hover:text-white/80'}`}>
+                <label key={t} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs transition ${tools.includes(t) ? 'border-white/40 bg-white/10 text-white' : 'border-white/15 text-white/50 hover:text-white/80'}`}>
                   <input
                     type="checkbox"
                     checked={tools.includes(t)}
@@ -699,35 +706,35 @@ function CreateAgentModal({
 
           {/* Model + schedule */}
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-              <label className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/40">Model</label>
+            <div className="rounded-2xl border border-white/15 bg-white/[0.04] p-6">
+              <label className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/55">Model</label>
               <div className="mt-2 text-sm text-white">{draft?.model || 'groq/llama-3.3-70b-versatile'}</div>
-              <div className="mt-1 text-[11px] text-white/45">{draft?.modelReason}</div>
+              <div className="mt-1 text-[11px] text-white/55">{draft?.modelReason}</div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-              <label className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/40">Schedule</label>
+            <div className="rounded-2xl border border-white/15 bg-white/[0.04] p-6">
+              <label className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/55">Schedule</label>
               <div className="mt-3 flex flex-wrap gap-2">
                 {(['none', 'daily', 'interval'] as const).map((k) => (
                   <button
                     key={k}
                     onClick={() => setScheduleKind(k)}
-                    className={`rounded-full px-4 py-1.5 font-mono-display text-[10px] uppercase tracking-wider transition ${scheduleKind === k ? 'bg-white/15 text-white' : 'bg-white/5 text-white/45 hover:text-white/80'}`}
+                    className={`rounded-full px-4 py-1.5 font-mono-display text-[10px] uppercase tracking-wider transition ${scheduleKind === k ? 'bg-white/15 text-white' : 'bg-white/5 text-white/55 hover:text-white/80'}`}
                   >
                     {k === 'none' ? 'On demand' : k}
                   </button>
                 ))}
               </div>
               {scheduleKind === 'daily' && (
-                <input type="time" value={dailyTime} onChange={(e) => setDailyTime(e.target.value)} className="mt-3 rounded-lg border border-white/10 bg-black/30 px-3 py-1.5 text-sm text-white outline-none" />
+                <input type="time" value={dailyTime} onChange={(e) => setDailyTime(e.target.value)} className="mt-3 rounded-lg border border-white/15 bg-black/30 px-3 py-1.5 text-sm text-white outline-none" />
               )}
               {scheduleKind === 'interval' && (
                 <div className="mt-3 flex items-center gap-2 text-xs text-white/60">
                   every
-                  <input type="number" min={5} max={1440} value={intervalMin} onChange={(e) => setIntervalMin(Number(e.target.value) || 30)} className="w-20 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-sm text-white outline-none" />
+                  <input type="number" min={5} max={1440} value={intervalMin} onChange={(e) => setIntervalMin(Number(e.target.value) || 30)} className="w-20 rounded-lg border border-white/15 bg-black/30 px-2 py-1 text-sm text-white outline-none" />
                   minutes
                 </div>
               )}
-              <div className="mt-2 text-[10px] text-white/35">
+              <div className="mt-2 text-[10px] text-white/50">
                 Scheduled runs are read-only and use server-configured keys only.
               </div>
             </div>
@@ -735,13 +742,13 @@ function CreateAgentModal({
 
           {/* Gathered skills */}
           {allCandidates.length > 0 && (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-              <label className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/40">
+            <div className="rounded-2xl border border-white/15 bg-white/[0.04] p-6">
+              <label className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/55">
                 Gathered skills ({allCandidates.length})
               </label>
               <div className="mt-3 space-y-2">
                 {allCandidates.map((c) => (
-                  <label key={`${c.source}-${c.id}`} className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-black/20 p-3 transition hover:border-white/20">
+                  <label key={`${c.source}-${c.id}`} className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/15 bg-black/20 p-3 transition hover:border-white/20">
                     <input
                       type="checkbox"
                       checked={pickedSkills.includes(c.id)}
@@ -750,8 +757,8 @@ function CreateAgentModal({
                     />
                     <div className="min-w-0">
                       <div className="text-xs text-white">{c.name}</div>
-                      <div className="mt-0.5 line-clamp-1 text-[11px] text-white/45">{c.description}</div>
-                      <div className="mt-1 flex items-center gap-2 text-[10px] text-white/35">
+                      <div className="mt-0.5 line-clamp-1 text-[11px] text-white/55">{c.description}</div>
+                      <div className="mt-1 flex items-center gap-2 text-[10px] text-white/50">
                         <span className="rounded-full bg-white/5 px-2 py-0.5">{SOURCE_LABELS[c.source]}</span>
                         {c.sourceUrl && <a href={c.sourceUrl} target="_blank" rel="noreferrer" className="truncate underline hover:text-white/60">{c.sourceUrl}</a>}
                       </div>
@@ -764,13 +771,13 @@ function CreateAgentModal({
 
           {/* Gathered knowledge notes */}
           {(gather?.knowledge?.length || 0) > 0 && (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-              <label className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/40">
+            <div className="rounded-2xl border border-white/15 bg-white/[0.04] p-6">
+              <label className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/55">
                 Distilled knowledge ({gather!.knowledge.length})
               </label>
               <div className="mt-3 space-y-2">
                 {gather!.knowledge.map((n) => (
-                  <label key={n.note.slice(0, 40)} className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-black/20 p-3 transition hover:border-white/20">
+                  <label key={n.note.slice(0, 40)} className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/15 bg-black/20 p-3 transition hover:border-white/20">
                     <input
                       type="checkbox"
                       checked={pickedKnowledge.includes(n.note)}
@@ -779,7 +786,7 @@ function CreateAgentModal({
                     />
                     <div className="min-w-0">
                       <div className="text-xs text-white/90">{n.note}</div>
-                      <div className="mt-1 truncate text-[10px] text-white/35">from {n.source}</div>
+                      <div className="mt-1 truncate text-[10px] text-white/50">from {n.source}</div>
                     </div>
                   </label>
                 ))}
@@ -827,13 +834,13 @@ function TestRunPanel({
   onDone: () => void
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-      <div className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/40">
+    <div className="rounded-2xl border border-white/15 bg-white/[0.04] p-6">
+      <div className="font-mono-display text-[10px] uppercase tracking-[0.25em] text-white/55">
         Test run — {agent.name}
       </div>
       <AgentRunChat agentId={agent.id} compact />
       <div className="mt-5 flex items-center justify-between">
-        <span className="text-[11px] text-white/40">Saved. Run it from the agents list any time.</span>
+        <span className="text-[11px] text-white/55">Saved. Run it from the agents list any time.</span>
         <button
           onClick={() => { onDone() }}
           className="rounded-full border border-white/15 bg-white/10 px-6 py-2.5 font-mono-display text-[11px] uppercase tracking-[0.2em] text-white transition hover:bg-white/20"
@@ -966,10 +973,10 @@ function AgentRunChat({
     <div className="mt-3">
       <div
         ref={scrollRef}
-        className={`overflow-y-auto rounded-xl border border-white/10 bg-black/30 ${compact ? 'max-h-72' : 'max-h-[28rem]'} p-4`}
+        className={`overflow-y-auto rounded-xl border border-white/15 bg-black/30 ${compact ? 'max-h-72' : 'max-h-[28rem]'} p-4`}
       >
         {!turns.length && (
-          <div className="py-6 text-center text-xs text-white/35">
+          <div className="py-6 text-center text-xs text-white/50">
             Type a message and run — or just say "run your task".
           </div>
         )}
@@ -980,7 +987,7 @@ function AgentRunChat({
             ) : (
               <div className="max-w-full text-sm">
                 {t.steps?.map((s, j) => (
-                  <div key={j} className="font-mono-display text-[10px] uppercase tracking-wider text-white/35">{s}</div>
+                  <div key={j} className="font-mono-display text-[10px] uppercase tracking-wider text-white/50">{s}</div>
                 ))}
                 {t.text && <div className="whitespace-pre-wrap text-white/90">{t.text}</div>}
                 {t.lessons?.length ? (
@@ -1001,7 +1008,7 @@ function AgentRunChat({
           onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), void send())}
           placeholder={running ? 'Running…' : 'Message your agent'}
           disabled={running}
-          className="flex-1 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none focus:border-white/30 disabled:opacity-50"
+          className="flex-1 rounded-xl border border-white/15 bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none focus:border-white/30 disabled:opacity-50"
         />
         <button
           onClick={() => void send()}
@@ -1113,10 +1120,10 @@ function AgentDetail({
   return (
     <div>
       <div className="mb-6 flex items-center gap-3">
-        <button onClick={onBack} className="text-white/40 transition hover:text-white/80">←</button>
+        <button onClick={onBack} className="text-white/55 transition hover:text-white/80">←</button>
         <div className="min-w-0">
           <h3 className="truncate text-lg font-semibold text-white">{agent.name}</h3>
-          <div className="truncate text-xs text-white/45">{agent.description}</div>
+          <div className="truncate text-xs text-white/55">{agent.description}</div>
         </div>
       </div>
 
@@ -1125,7 +1132,7 @@ function AgentDetail({
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`rounded-full px-4 py-1.5 font-mono-display text-[10px] uppercase tracking-[0.2em] transition ${tab === t ? 'bg-white/12 text-white' : 'text-white/40 hover:text-white/80'}`}
+            className={`rounded-full px-4 py-1.5 font-mono-display text-[10px] uppercase tracking-[0.2em] transition ${tab === t ? 'bg-white/12 text-white' : 'text-white/55 hover:text-white/80'}`}
           >
             {t === 'run' ? 'Run' : t === 'history' ? `History (${runs.length})` : t === 'learned' ? `Learned (${agent.memory.length})` : `Knowledge (${agent.knowledge.length})`}
           </button>
@@ -1147,9 +1154,9 @@ function AgentDetail({
 
           {tab === 'history' && (
             <div className="space-y-3">
-              {!runs.length && <div className="rounded-xl border border-white/10 bg-white/[0.04] p-6 text-center text-xs text-white/40">No runs yet.</div>}
+              {!runs.length && <div className="rounded-xl border border-white/15 bg-white/[0.04] p-6 text-center text-xs text-white/55">No runs yet.</div>}
               {runs.map((r, i) => (
-                <div key={i} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
+                <div key={i} className="rounded-xl border border-white/15 bg-white/[0.04] p-4">
                   <div className="flex items-center justify-between font-mono-display text-[10px] uppercase tracking-wider">
                     <span className={r.status === 'ok' ? 'text-emerald-300/80' : 'text-red-300/80'}>
                       {r.status} · {r.trigger} · {new Date(r.startedAt).toLocaleString()}
@@ -1157,7 +1164,7 @@ function AgentDetail({
                   </div>
                   {r.steps?.length ? (
                     <div className="mt-2 space-y-0.5">
-                      {r.steps.map((s, j) => <div key={j} className="font-mono-display text-[10px] text-white/35">{s}</div>)}
+                      {r.steps.map((s, j) => <div key={j} className="font-mono-display text-[10px] text-white/50">{s}</div>)}
                     </div>
                   ) : null}
                   <div className="mt-2 line-clamp-6 whitespace-pre-wrap text-xs text-white/80">{r.output || '(no output)'}</div>
@@ -1170,17 +1177,17 @@ function AgentDetail({
           )}
 
           {tab === 'learned' && (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
+            <div className="rounded-2xl border border-white/15 bg-white/[0.04] p-6">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-white/50">Distilled after every run — injected into the next one.</span>
                 {agent.memory.length > 0 && (
-                  <button onClick={() => void clearMemory()} className="text-[10px] text-white/40 hover:text-red-300">clear all</button>
+                  <button onClick={() => void clearMemory()} className="text-[10px] text-white/55 hover:text-red-300">clear all</button>
                 )}
               </div>
               <div className="mt-4 space-y-2">
-                {!agent.memory.length && <div className="text-xs text-white/35">Nothing learned yet — run the agent a couple of times.</div>}
+                {!agent.memory.length && <div className="text-xs text-white/50">Nothing learned yet — run the agent a couple of times.</div>}
                 {agent.memory.map((m, i) => (
-                  <div key={i} className="group flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div key={i} className="group flex items-start justify-between gap-3 rounded-xl border border-white/15 bg-black/20 p-3">
                     <span className="text-xs text-white/85">{m}</span>
                     <button onClick={() => void delMemory(i)} className="shrink-0 text-white/20 opacity-0 transition group-hover:opacity-100 hover:text-red-400" aria-label="Forget">✕</button>
                   </div>
@@ -1219,9 +1226,9 @@ function AgentDetail({
               )}
 
               <div className="space-y-2">
-                {!agent.knowledge.length && <div className="rounded-xl border border-white/10 bg-white/[0.04] p-6 text-center text-xs text-white/40">No knowledge notes yet.</div>}
+                {!agent.knowledge.length && <div className="rounded-xl border border-white/15 bg-white/[0.04] p-6 text-center text-xs text-white/55">No knowledge notes yet.</div>}
                 {agent.knowledge.map((k, i) => (
-                  <div key={i} className="group flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div key={i} className="group flex items-start justify-between gap-3 rounded-xl border border-white/15 bg-black/20 p-3">
                     <span className="text-xs text-white/85">{k}</span>
                     <button onClick={() => void delKnowledge(i)} className="shrink-0 text-white/20 opacity-0 transition group-hover:opacity-100 hover:text-red-400" aria-label="Remove note">✕</button>
                   </div>

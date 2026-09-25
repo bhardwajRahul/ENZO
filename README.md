@@ -1,4 +1,4 @@
-# ENZO
+# ENZO — open-source, self-hosted AI workspace
 
 <p align="center">
   <img src="docs/assets/enzo-banner.svg" alt="ENZO title bar — the official shield logo forming from shards on a white tile, beside the ENZO wordmark, with a hand-drawn circle sketching itself around the lockup" width="860">
@@ -13,7 +13,7 @@
   <a href="https://enzo-hub.duckdns.org">Live demo</a> ·
   <a href="#six-surfaces-one-workspace">What's inside</a> ·
   <a href="#security">Security</a> ·
-  <a href="#whats-new-in-v130">What's new</a> ·
+  <a href="#whats-new-in-v140">What's new</a> ·
   <a href="#usage-guide">Usage guide</a> ·
   <a href="docs/CHANGELOG.md">Changelog</a>
 </p>
@@ -53,6 +53,16 @@ git clone https://github.com/theguysudo/ENZO.git
 cd enzo
 docker compose up -d
 # → http://localhost:5001
+```
+
+No clone? One command (mounts the same named volumes, so your data and the claimed instance survive restarts and upgrades):
+
+```bash
+docker run -d -p 5001:5001 --name enzo \
+  -v enzo-projects:/app/generated-projects \
+  -v enzo-skills:/app/src/skills/skills \
+  -v enzo-memory:/app/data \
+  ghcr.io/theguysudo/enzo:latest
 ```
 
 That's the whole install. No accounts, no mandatory env, no database server. Open the app, press **Login**, and pick any provider:
@@ -120,6 +130,8 @@ Most "AI workspaces" hold your keys, meter your usage, or need a subscription to
 | Security testing in CI | black-box pentest, 44 asserts, every push | opaque | rarely |
 
 *(Competitor column is about the category, not specific products — details vary.)*
+
+**Comparing specific alternatives?** ENZO sits in the self-hosted, bring-your-own-keys family next to LibreChat (multi-provider chat), AnythingLLM (local RAG workspace), LobeChat (plugin ecosystem) and the Dify / Flowise visual workflow builders. The difference is the agent layer: agents here write their own operating manuals, keep training on your activity, and the whole stack installs as one zero-config container — with nothing between you and the provider taking a cut.
 
 ## Security
 
@@ -291,6 +303,18 @@ This image is generated from the same codebase that runs https://enzo-hub.duckdn
 
 1. **No Google sign-in.** The hosted site offers Google OAuth as a convenience; here, login *is* setting your provider keys. Everything else — providers, research, coding agent, vault, memory, skills — is identical.
 2. **Default themes** (lite image). The first homepage and workspace themes run as pure WebGL/three.js so the image stays small. The `full` image has the complete set.
+
+## Where ENZO has been mentioned
+
+- **GitHub Trending** (LLM topic) — Sep 9–10, 2026
+- **[The Daily Diff](https://tdd.cat)** — "ENZO brings self-hosted AI workspace with agents and BYOK" (Sep 19, 2026)
+- **[OpenAlternative](https://openalternative.co/enzo)** — listed as an open-source, self-hosted alternative
+- **[agentspace.cc](https://agentspace.cc/tool/enzo)** · **[followagents.com](https://followagents.com/en/agents/enzo)** — agent directory listings
+- **[The Lavx News](https://news.lavx.hu/article/self-hosted-ai-workspace-enzo-runs-300-models-on-your-own-keys-with-no-middleman)** — "Self-hosted AI workspace: ENZO runs 300+ models on your own keys, with no middleman"
+- **[Revesery](https://revesery.com/@alex/how-to-set-up-the-enzo-self-hosted-ai-workspace-muffcxe4)** — a community setup guide
+- **Daniel Kornas** on [LinkedIn](https://www.linkedin.com/posts/daniel-kornas_your-ai-workspace-doesnt-need-to-sit-between-activity-7508321788356046848-iyST) and [X](https://x.com/DanKornas/status/2102555791739761116) — "Your AI workspace doesn't need to sit between you and your model provider"
+- **[ncybersec](https://www.facebook.com/ncybersec/posts/enzo-a-self-hosted-bring-your-own-key-ai-workspace-for-chatting-with-300-models-/1507565364732231/)** and **[elbonay.duredeyef](https://www.facebook.com/elbonay.duredeyef/posts/your-ai-workspace-doesnt-need-to-sit-between-you-and-your-model-providerenzo-is-/29148675744717250/)** on Facebook
+- Curated lists that merged the addition: [awesome-opensource-ai](https://github.com/alvinreal/awesome-opensource-ai) · [Awesome-AI-Agents](https://github.com/Jenqyang/Awesome-AI-Agents) · [awesome-ai-web-search](https://github.com/felladrin/awesome-ai-web-search) · [awesome-gpt](https://github.com/awesome-gptX/awesome-gpt)
 
 ## License
 

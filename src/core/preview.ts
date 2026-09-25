@@ -37,6 +37,7 @@ interface PreviewEntry {
 const store = new Map<string, PreviewEntry>();
 const PREVIEW_TTL_MS = 60 * 60 * 1000; // 1 hour
 const PREVIEW_MAX = 300;
+const PREVIEW_MAX_BYTES = 64 * 1024 * 1024; // resident ceiling across all docs
 
 export interface RegisteredPreview {
   id: string;
@@ -56,6 +57,19 @@ function sweep() {
       .map(([id]) => id)
       .slice(0, store.size - PREVIEW_MAX);
     for (const id of oldest) store.delete(id);
+  }
+  // Byte cap: 300 entries x 2.5MB is up to ~750MB resident; evict oldest-first
+  // once the total crosses the ceiling so sustained registrations can't park
+  // more memory than the box should give previews.
+  let total = 0;
+  for (const entry of store.values()) total += entry.html.length;
+  if (total > PREVIEW_MAX_BYTES) {
+    const oldest = [...store.entries()].sort((a, b) => a[1].createdAt - b[1].createdAt);
+    for (const [id, entry] of oldest) {
+      if (total <= PREVIEW_MAX_BYTES) break;
+      total -= entry.html.length;
+      store.delete(id);
+    }
   }
 }
 

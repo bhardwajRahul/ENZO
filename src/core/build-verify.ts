@@ -252,6 +252,15 @@ export async function verifyProject(files: FileEntry[]): Promise<BuildReport> {
   checks.push({ name: 'local asset refs', ...refs });
   if (refs.status === 'fail') errors.push(refs.detail!);
 
+  // The classic silent-page hallucination: app.js wires
+  // getElementById('submit-btn') but the HTML never emits that id — the build
+  // "passes" and the button is dead. Only quoted, simple ids are checked;
+  // template-literal ids (`card-${i}`) and variable lookups are skipped since
+  // they can be dynamic.
+  const dom = checkDomRefs(files);
+  checks.push({ name: 'dom refs', ...dom });
+  if (dom.status === 'fail') errors.push(dom.detail!);
+
   const syntaxResults: string[] = [];
   for (const f of jsFiles) {
     const err = await nodeCheck(f.content, f.path);
@@ -306,6 +315,36 @@ export async function verifyProject(files: FileEntry[]): Promise<BuildReport> {
 export function renderBuildReport(report: BuildReport): string {
   const lines = report.checks.map((c) => `  [${c.status === 'pass' ? 'PASS' : c.status === 'warn' ? 'WARN' : 'FAIL'}] ${c.name}${c.detail ? ` — ${c.detail}` : ''}`);
   return [`BUILD CHECK ${report.ok ? 'PASSED' : 'FAILED'} (${report.checks.filter((c) => c.status === 'fail').length} failing):`, ...lines].join('\n');
+}
+
+/**
+ * JS → HTML id cross-check. The most common silent hallucination in generated
+ * pages: app.js wires `getElementById('submit-btn')` but the HTML never emits
+ * that id — every check passes, the button is dead. Fails the build so the
+ * repair round hands the missing ids back. Only quoted, simple ids are
+ * checked: template-literal ids (`card-${i}`) and variable lookups are skipped
+ * since they can be dynamic.
+ */
+function checkDomRefs(files: FileEntry[]): BuildCheck {
+  const html = files
+    .filter((f) => /\.html?$/.test(f.path))
+    .map((f) => f.content)
+    .join('\n');
+  if (!html) return { name: 'dom refs', status: 'pass', detail: 'no html to cross-check' };
+  const declared = new Set<string>();
+  for (const m of html.matchAll(/\bid=["']([a-zA-Z_][\w-]*)["']/g)) declared.add(m[1]);
+  const missing = new Set<string>();
+  for (const f of files.filter((f2) => isJs(f2.path))) {
+    for (const m of f.content.matchAll(/(?:getElementById|querySelector)\(\s*['"]#?([a-zA-Z_][\w-]*)['"]/g)) {
+      if (!declared.has(m[1])) missing.add(m[1]);
+    }
+  }
+  if (missing.size === 0) return { name: 'dom refs', status: 'pass', detail: 'every referenced element id exists' };
+  return {
+    name: 'dom refs',
+    status: 'fail',
+    detail: `JS references element id(s) that exist nowhere in the HTML: ${[...missing].slice(0, 6).join(', ')} — add them or fix the selectors`,
+  };
 }
 
 const MAX_REPAIR_CONTEXT_CHARS = 160_000;

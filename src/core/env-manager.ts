@@ -127,10 +127,25 @@ function validateVaultKey(vaultId: string, value: string): string {
 export function saveVaultKeysToEnv(keys: Record<string, string>): { updated: string[]; envPath: string } {
   const updated: string[] = [];
 
+  // Collapse double-pasted keys at the second marker — a doubled paste validates
+  // nowhere and only surfaces as a provider 401 later.
+  const KEY_MARKERS: Record<string, string> = {
+    groq: 'gsk_',
+    nvidia: 'nvapi',
+    openrouter: 'sk-or-v1',
+  };
+  const collapseDoubled = (vaultId: string, raw: string): string => {
+    const val = (raw ?? '').trim();
+    const marker = KEY_MARKERS[vaultId];
+    if (!marker) return val;
+    const second = val.indexOf(marker, marker.length);
+    return second > 0 ? val.slice(0, second) : val;
+  };
+
   // 1. Update in-memory process.env
   for (const [vaultId, value] of Object.entries(keys)) {
     const envVar = validateVaultKey(vaultId, (value ?? '').trim());
-    const cleanVal = (value || '').trim();
+    const cleanVal = collapseDoubled(vaultId, value || '');
     if (cleanVal) {
       process.env[envVar] = cleanVal;
       updated.push(envVar);

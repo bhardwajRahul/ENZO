@@ -305,6 +305,30 @@ export class UiSearchSignalFilter {
   process(chunk: string): string {
     this.buf += chunk;
     let out = '';
+
+    // Some providers do not preserve ENZO's XML signal and instead serialize
+    // the same request as a literal tool transcript, for example:
+    //
+    // <tool_call>ui_search
+    // <parameter name="domain">color</parameter>
+    // retro cafe palette
+    // </invoke>
+    //
+    // Treat that transcript as the same internal request. It must never reach
+    // the user, and a search-only response is still a successful model round.
+    const toolCallRe = /<tool_call\b[^>]*>\s*ui_search\b([\s\S]*?)(?:<\/invoke>|<\/tool_call>)/i;
+    for (;;) {
+      const m = toolCallRe.exec(this.buf);
+      if (!m) break;
+      const body = m[1] || '';
+      const domain = /<parameter\b[^>]*\bname\s*=\s*["']domain["'][^>]*>([\s\S]*?)<\/parameter>/i.exec(body)?.[1]?.trim();
+      const stack = /<parameter\b[^>]*\bname\s*=\s*["']stack["'][^>]*>([\s\S]*?)<\/parameter>/i.exec(body)?.[1]?.trim();
+      const namedQuery = /<parameter\b[^>]*\bname\s*=\s*["']query["'][^>]*>([\s\S]*?)<\/parameter>/i.exec(body)?.[1]?.trim();
+      const query = (namedQuery || body.replace(/<parameter\b[^>]*>[\s\S]*?<\/parameter>/gi, '').trim()).trim();
+      if (query) this._requests.push({ query, domain, stack });
+      this.buf = this.buf.slice(0, m.index) + this.buf.slice(m.index + m[0].length);
+    }
+
     const re = /<ui_search\b([^>]*)>([\s\S]*?)<\/ui_search>/i;
     for (;;) {
       const m = re.exec(this.buf);
@@ -319,13 +343,26 @@ export class UiSearchSignalFilter {
       this.buf = this.buf.slice(0, m.index) + this.buf.slice(m.index + m[0].length);
     }
     // Hold back from an unclosed opening tag; emit the rest.
-    const open = /<ui_search\b/i.exec(this.buf);
+    // Hold the whole tool-call prefix while it is arriving a token at a time.
+    // Waiting for `ui_search` here is too late: a provider can split
+    // `<tool_call>ui_search` between two chunks and the first chunk would leak.
+    const open = /<ui_search\b|<tool_call\b/i.exec(this.buf);
     if (open) {
       out += this.buf.slice(0, open.index);
       this.buf = this.buf.slice(open.index);
     } else {
-      out += this.buf;
-      this.buf = '';
+      // Also hold a possible protocol prefix when the opening `<` or the
+      // `tool_call`/`ui_search` name arrived in separate provider chunks.
+      // Ordinary tags such as `<div` do not match this prefix and continue
+      // through the normal output path.
+      const partial = /<(?:[tu][\w_]*)?$/i.exec(this.buf);
+      if (partial?.index !== undefined && partial.index + partial[0].length === this.buf.length) {
+        out += this.buf.slice(0, partial.index);
+        this.buf = this.buf.slice(partial.index);
+      } else {
+        out += this.buf;
+        this.buf = '';
+      }
     }
     // Safety valve: an unterminated signal degenerates into visible text.
     if (this.buf.length > this.MAX_PENDING) { out += this.buf; this.buf = ''; }
@@ -335,7 +372,17 @@ export class UiSearchSignalFilter {
   /** Pending search requests collected since the last drain (drains them). */
   drain(): UiSearchRequest[] { const r = this._requests; this._requests = []; return r; }
   get hasRequests(): boolean { return this._requests.length > 0; }
-  flush(): string { const o = this.buf; this.buf = ''; return o; }
+  flush(): string {
+    // A provider may close the stream immediately after an unterminated tool
+    // transcript. Never expose that protocol fragment as assistant text.
+    if (/<tool_call\b[^>]*>\s*ui_search\b|<ui_search\b/i.test(this.buf)) {
+      this.buf = '';
+      return '';
+    }
+    const o = this.buf;
+    this.buf = '';
+    return o;
+  }
 }
 
 
@@ -367,6 +414,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // Stack search works.
   const stack = searchStack('component state management', 'react');
   assert(stack.count >= 0, 'react stack search runs');
+
+  const toolFilter = new UiSearchSignalFilter();
+  assert(
+    toolFilter.process('<tool_call>ui_search\n<parameter name="domain">color</parameter>\nretro cafe palette\n</invoke>') === '',
+    'provider tool transcript is hidden',
+  );
+  const toolRequest = toolFilter.drain()[0];
+  assert(toolRequest?.domain === 'color' && toolRequest.query === 'retro cafe palette', 'provider tool transcript is parsed');
 
   console.log('✔ ui-ux-search: domain detection, BM25 ranking, RFC-4180 CSV parsing all pass');
   console.log('\nSample —', formatResult(color).slice(0, 400));

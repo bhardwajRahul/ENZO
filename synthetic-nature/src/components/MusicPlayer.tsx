@@ -10,11 +10,24 @@
 // frames). Recolored to the WeatherWidget glass shell: white + the one coral
 // (#f0968a), used only on the progress fill, active shuffle/loop, and filled ♥.
 // A "For You" button asks the backend (the user's own provider keys) for
-// personalized seeds. Layout CSS lives in src/index.css (`.mp-*`).
+// personalized seeds. The search panel logs searches and shows taste-based
+// suggestions (liked tracks, played artists, recent searches) device-locally.
+// Layout CSS lives in src/index.css (`.mp-*`).
 
 import React, { memo, useCallback, useEffect, useId, useRef, useState } from 'react'
 import { searchYouTube, searchYouTubeList, type YtHit } from '../lib/youtubeSearch'
-import { record, summary } from '../lib/musicTaste'
+import {
+  record,
+  setLiked,
+  keyOf,
+  likedTracks,
+  topArtists,
+  recordSearch,
+  recentSearches,
+  clearSearches,
+  summary,
+  type TasteTrack,
+} from '../lib/musicTaste'
 import { getProviderKeys } from '../lib/keyStore'
 import { Slider } from './ui/slider'
 import {
@@ -739,7 +752,9 @@ export default function MusicPlayer() {
   const [shuffle, setShuffle] = useState(false)
   const [loop, setLoop] = useState(false)
   const [expanded, setExpanded] = useState(false)
-  const [likedIds, setLikedIds] = useState<Set<string>>(new Set())
+  // Heart state hydrates from the device-local ledger (composite title—channel
+  // keys) so likes survive reloads; before this the Set reset on every mount.
+  const [likedIds, setLikedIds] = useState<Set<string>>(() => new Set(likedTracks().map(keyOf)))
   const [foryou, setForyou] = useState<'idle' | 'loading' | 'empty'>('idle')
   const [status, setStatus] = useState('')
   const [direction, setDirection] = useState<Direction>(null)
@@ -749,6 +764,16 @@ export default function MusicPlayer() {
   const [searchQ, setSearchQ] = useState('')
   const [results, setResults] = useState<YtHit[]>([])
   const [searchStatus, setSearchStatus] = useState<'idle' | 'loading' | 'empty'>('idle')
+  // Taste panel content for the search overlay — liked tracks, top artists,
+  // recent searches; refreshed whenever the panel opens or a like toggles.
+  const [tasteList, setTasteList] = useState<TasteTrack[]>([])
+  const [tasteArtists, setTasteArtists] = useState<string[]>([])
+  const [recent, setRecent] = useState<string[]>([])
+  const refreshTaste = useCallback(() => {
+    setTasteList(likedTracks())
+    setTasteArtists(topArtists())
+    setRecent(recentSearches())
+  }, [])
 
   // Equalizer: state persists device-locally; `enhance` selects which engine
   // plays. The enhanced engine is built once and both engines stay mounted —
@@ -889,9 +914,22 @@ export default function MusicPlayer() {
   }
   const like = () => {
     if (!track) return
-    record('liked', track)
-    setLikedIds((s) => new Set(s).add(track.videoId))
+    const k = keyOf(track)
+    const on = !likedIds.has(k)
+    setLiked(track, on)
+    setLikedIds((s) => {
+      const n = new Set(s)
+      if (on) n.add(k)
+      else n.delete(k)
+      return n
+    })
+    refreshTaste()
   }
+
+  // Taste panel refreshes when the search overlay opens (and after every like).
+  useEffect(() => {
+    if (searching) refreshTaste()
+  }, [searching, refreshTaste])
 
   const hasKey = Object.values(getProviderKeys()).some(Boolean)
   const forYou = async () => {
@@ -924,13 +962,36 @@ export default function MusicPlayer() {
     }
   }
 
-  const runSearch = async () => {
-    const q = searchQ.trim()
+  const runSearch = async (qOverride?: string) => {
+    const q = (qOverride ?? searchQ).trim()
     if (!q) return
+    recordSearch(q)
+    setRecent(recentSearches())
+    if (qOverride !== undefined) setSearchQ(q)
     setSearchStatus('loading')
     const hits = await searchYouTubeList(q)
     setResults(hits)
     setSearchStatus(hits.length ? 'idle' : 'empty')
+  }
+  // Play a taste pick: ledger rows carry the videoId when known; older rows
+  // resolve it on demand. The full liked list becomes the queue so
+  // prev/next walk the playlist, not just the one pick.
+  const playTaste = async (t: TasteTrack, list: TasteTrack[]) => {
+    setSearching(false)
+    autoplayRef.current = true
+    setDirection(null)
+    const resolved = await Promise.all(
+      list.map(async (x) => {
+        if (x.videoId) return { videoId: x.videoId, title: x.title, channel: x.channel }
+        const hits = await searchYouTubeList(`${x.channel} ${x.title}`.trim()).catch(() => [] as YtHit[])
+        return hits[0] ? { videoId: hits[0].videoId, title: x.title, channel: x.channel } : null
+      }),
+    )
+    const tracks = resolved.filter(Boolean) as Track[]
+    if (!tracks.length) return
+    const at = tracks.findIndex((x) => x.title === t.title && x.channel === t.channel)
+    setQueue(tracks)
+    setIndex(at >= 0 ? at : 0)
   }
   // Play a catalog hit: the whole result list becomes the queue (so prev/next
   // walk the search results) and the clicked track becomes current — the load
@@ -975,7 +1036,7 @@ export default function MusicPlayer() {
     }
   }
 
-  const liked = track ? likedIds.has(track.videoId) : false
+  const liked = track ? likedIds.has(keyOf(track)) : false
 
   return (
     <div className={`mp-dock ${expanded ? '' : 'mp-collapsed'}`}>
@@ -1034,6 +1095,7 @@ export default function MusicPlayer() {
                 <input
                   className="mp-search-input"
                   autoFocus
+                  autoComplete="off"
                   value={searchQ}
                   placeholder="Search a track…"
                   onChange={(e) => setSearchQ(e.target.value)}
@@ -1051,8 +1113,73 @@ export default function MusicPlayer() {
               <div className="mp-results">
                 {searchStatus === 'loading' && <div className="mp-results-note">Searching…</div>}
                 {searchStatus === 'empty' && <div className="mp-results-note">No results — try another search</div>}
-                {searchStatus === 'idle' && !results.length && (
+                {searchStatus === 'idle' && !results.length && !tasteList.length && !recent.length && (
                   <div className="mp-results-note">Search YouTube and press Enter to play</div>
+                )}
+                {/* Empty-state suggestions: taste-derived, never prefix-matched —
+                    liked tracks first, then the artists he actually plays, then
+                    his own recent searches. */}
+                {!results.length && searchStatus !== 'loading' && (
+                  <>
+                    {tasteList.length > 0 && (
+                      <div className="mp-taste-sec">
+                        <span className="mp-taste-head">Based on your taste</span>
+                        {tasteList.slice(0, 12).map((t, i) => (
+                          <button
+                            key={`taste-${i}`}
+                            className="mp-result"
+                            onClick={() => playTaste(t, tasteList.slice(0, 12))}
+                          >
+                            {t.videoId && (
+                              <img className="mp-result-cover" src={cover(t.videoId)} alt="" draggable={false} />
+                            )}
+                            <span className="mp-result-meta">
+                              <span className="mp-result-title">{t.title}</span>
+                              {t.channel && <span className="mp-result-channel">{t.channel}</span>}
+                            </span>
+                            <svg className="mp-result-play" viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+                              {Ico.play}
+                            </svg>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {tasteArtists.length > 0 && (
+                      <div className="mp-taste-sec">
+                        <span className="mp-taste-head">Artists you listen to</span>
+                        <div className="mp-chips">
+                          {tasteArtists.map((a) => (
+                            <button key={a} className="mp-chip" onClick={() => runSearch(a)}>
+                              {a}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {recent.length > 0 && (
+                      <div className="mp-taste-sec">
+                        <span className="mp-taste-head">
+                          Recent
+                          <button
+                            className="mp-chip-clear"
+                            onClick={() => {
+                              clearSearches()
+                              setRecent([])
+                            }}
+                          >
+                            clear
+                          </button>
+                        </span>
+                        <div className="mp-chips">
+                          {recent.map((s) => (
+                            <button key={s} className="mp-chip" onClick={() => runSearch(s)}>
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
                 {results.map((h, i) => (
                   <button key={`${h.videoId}-${i}`} className="mp-result" onClick={() => playResult(i)}>

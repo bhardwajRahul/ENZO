@@ -68,6 +68,7 @@ import {
   Wifi,
   RefreshCw,
   ChevronsRightLeft,
+  Github,
 } from 'lucide-react'
 import { animate, stagger } from 'animejs'
 import { OnboardingView, type OnbStep } from './components/OnboardingView'
@@ -113,11 +114,10 @@ export interface CatalogModel {
 // ─── Model Catalogue ──────────────────────────────────────────────────────────
 
 // ─── Shared model-list fetch (deduped + cached) ───────────────────────────────
-// Every model card needs to know which models the backend reports as available.
-// Without sharing, each card fetched /api/v1/models independently — 15+ identical
-// requests per page on mount and every poll tick, which becomes a request storm
-// (especially loud when the backend is down). This caches the response for a
-// short window and collapses concurrent callers onto a single in-flight request.
+// Without sharing, every model card hit /api/v1/models on its own — 15+
+// identical requests per mount and poll tick (a request storm when the
+// backend is down). Cache short, collapse concurrent callers onto one
+// in-flight request.
 const MODELS_ENDPOINT = '/api/v1/models'
 
 /** Catalog blurbs that only restate how a model is routed. Anchored and
@@ -862,14 +862,12 @@ function CodexSandboxSimulator({ isLight }: { isLight: boolean }) {
 // ─── App Component ────────────────────────────────────────────────────────────
 
 // ─── Floating nav scroll-collapse ──────────────────────────────────────────
-// Transplanted from AnimatedNavFramer (21st.dev): the nav collapses to a slim
-// pill on scroll-down and springs back open on scroll-up. Motion recipe kept
-// 1:1 — same thresholds (collapse >150px down, expand after 80px up), same
-// staggered item/children springs, same menu-glyph pop on the pill, same
-// click-to-reopen. What's adapted to ENZO: the bar animates max-width instead
-// of width (its responsive 92%/md:85%/max-w-6xl sizing stays untouched), and
-// the ENZO brand (DrawLineText) is never hidden — the collapsed pill reads
-// "ENZO ⊞" instead of becoming a lone icon.
+// From AnimatedNavFramer (21st.dev), recipe kept 1:1: collapse >150px down,
+// expand after a net 80px up, same springs, menu-glyph pop and
+// click-to-reopen. Adapted to ENZO: the bar animates max-width instead of
+// width (its responsive 92%/md:85%/max-w-6xl sizing stays untouched), and the
+// brand is never hidden — the collapsed pill reads "ENZO ⊞" instead of
+// becoming a lone icon.
 const NAV_COLLAPSE_SCROLL = 150
 const NAV_EXPAND_SCROLL = 80
 
@@ -967,7 +965,7 @@ function App() {
   // yAtCollapse keeps the 80px scroll-up re-expand working from wherever it
   // was pressed; at the top there's nothing to scroll up from, so a deliberate
   // collapse sticks until the pill is clicked. ponytail: not persisted — the
-  // default is "open", per the request.
+  // default is open.
   const collapseNav = useCallback(() => {
     navYAtCollapse.current = window.scrollY
     setNavExpanded(false)
@@ -1290,7 +1288,7 @@ function App() {
   }, [homepageTheme])
 
   const handlePreloadRequest = (videoSrc: string) => {
-    // Create a temporary video element in the background to start preloading/buffering
+    // Off-DOM element: preload='auto' still buffers without being attached.
     const tempVideo = document.createElement('video')
     tempVideo.src = videoSrc
     tempVideo.preload = 'auto'
@@ -1298,6 +1296,11 @@ function App() {
 
   // ─── Real Vault Keys syncing ────────────────────────────────────────────────
   const [vaultKeys, setVaultKeys] = useState<Record<string, string>>({})
+  // Hydrate from the device store — the fields must show what's stored, or a
+  // casual save reads as an all-clear and wipes every stored key.
+  useEffect(() => {
+    setVaultKeys(getProviderKeys())
+  }, [])
 
   useEffect(() => {
     // The vault is a GUI of the local device store — read through keyVault so the
@@ -1606,6 +1609,15 @@ function App() {
             variants={navSectionVariants}
             className="flex min-w-0 items-center gap-2"
           >
+            <a
+              href="https://github.com/theguysudo/ENZO"
+              target="_blank"
+              rel="noreferrer"
+              title="ENZO on GitHub — star it if you like it"
+              className="shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-white/45 hover:text-white hover:bg-white/5 transition-all"
+            >
+              <Github size={13} />
+            </a>
             {isLoggedIn && isWorkspaceSurface && (
               <HeaderThemeSelector
                 activeId={mBackgroundVideoId}
@@ -1898,7 +1910,10 @@ function App() {
               />
             )}
 
-            {activeTab === 'terminal' && (
+            {/* Stays mounted across tabs so a running generation and its preview
+                survive switching away — hidden, not unmounted. The component
+                gates its own portals on activeTab. */}
+            <div className={activeTab === 'terminal' ? 'contents' : 'hidden'}>
               <TerminalSection
                 activeModel={activeModel}
                 setActiveModel={setActiveModel}
@@ -1907,7 +1922,7 @@ function App() {
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
               />
-            )}
+            </div>
 
             {activeTab === 'vault' && (
               <VaultSection
@@ -3332,7 +3347,9 @@ function VaultSection({
           const res = await fetch('/api/vault/keys', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-vault-token': vaultToken },
-            body: JSON.stringify({ keys }),
+            // Empty fields are "untouched", not "cleared" — sending them would
+            // wipe .env values for keys this browser never held.
+            body: JSON.stringify({ keys: Object.fromEntries(Object.entries(keys).filter(([, v]) => (v ?? '').trim())) }),
           })
           const data = await res.json()
           if (data.success) {

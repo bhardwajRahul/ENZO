@@ -24,6 +24,7 @@ import {
   sanitizeServerForExpress5,
   stopRuntime,
 } from '../projects/project-runtime.js';
+import { vaultTokenIsValid } from '../core/vault-token.js';
 
 const PROJECTS_DIR = path.join(process.cwd(), 'generated-projects');
 const MAX_FILES = 60;
@@ -252,26 +253,14 @@ export function projectExists(projectId: string): boolean {
   return !!id && fs.existsSync(path.join(PROJECTS_DIR, id));
 }
 
-/** Read project metadata including ownerToken from manifest.json */
-export function readProjectMeta(projectId: string): { ownerToken?: string } | null {
-  const id = String(projectId || '').replace(/[^a-zA-Z0-9_-]/g, '');
-  if (!id) return null;
-  const manifestPath = path.join(PROJECTS_DIR, id, 'manifest.json');
-  if (!fs.existsSync(manifestPath)) return null;
-  try {
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-    return { ownerToken: manifest.ownerToken };
-  } catch {
-    return null;
-  }
-}
-
 /** Check if the request's vault token matches the project's owner token */
 export function checkProjectOwnership(projectId: string, vaultToken: string | undefined): boolean {
-  if (!vaultToken) return false;
-  const meta = readProjectMeta(projectId);
-  if (!meta?.ownerToken) return false; // Project has no owner token (legacy)
-  return vaultToken === meta.ownerToken;
+  // Owned operations (delete, manifest) are frontend-driven with a minted
+  // vault token: a browser holding any valid provider key. The old raw compare
+  // against the save-time token 403'd the owner once the 12h token window
+  // rolled over, and locked out legacy projects with no owner token at all.
+  // The project id stays the unlisted capability.
+  return !!vaultToken && vaultTokenIsValid(vaultToken);
 }
 
 /** Middleware to enforce project ownership */
@@ -418,20 +407,28 @@ function serveIndex(id: string, res: any) {
   }
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
+  // The preview iframe carries `sandbox` (no allow-same-origin — see
+  // PreviewPanel); this response header gives the open-in-new-tab path the
+  // same opaque-origin isolation, so LLM-generated code never runs on our
+  // origin with access to the app's storage.
+  res.setHeader('Content-Security-Policy', 'sandbox allow-scripts allow-forms allow-modals allow-popups allow-pointer-lock');
   res.send(injectBackendBootstrap(id, html, !!findBackendEntry(id)));
 }
 
-// Serve the project index (entry point).
-projectRouter.get('/api/project/:id', requireProjectOwnership, (req: any, res: any) => {
+// Serve the project index (entry point). No ownership gate: the consumer is
+// the headerless sandboxed preview iframe (or a plain new tab), which cannot
+// attach an x-vault-token — same capability model as /api/preview (the id is
+// the grant). Owned operations (delete, manifest) keep the gate.
+projectRouter.get('/api/project/:id', (req: any, res: any) => {
   serveIndex(String(req.params.id || '').replace(/[^a-zA-Z0-9_-]/g, ''), res);
 });
-projectRouter.get('/api/project/:id/', requireProjectOwnership, (req: any, res: any) => {
+projectRouter.get('/api/project/:id/', (req: any, res: any) => {
   serveIndex(String(req.params.id || '').replace(/[^a-zA-Z0-9_-]/g, ''), res);
 });
 
 // Reverse-proxy any method/path to the project's spawned backend runtime.
 // The frontend calls window.ENZO_BACKEND + "/api/…" and we forward it.
-projectRouter.all('/api/project/:id/backend/*proxy', requireProjectOwnership, async (req: any, res: any) => {
+projectRouter.all('/api/project/:id/backend/*proxy', async (req: any, res: any) => {
   const id = String(req.params.id || '').replace(/[^a-zA-Z0-9_-]/g, '');
   if (!id || !projectExists(id)) {
     res.status(404).json({ error: 'not_found' });
@@ -444,7 +441,7 @@ projectRouter.all('/api/project/:id/backend/*proxy', requireProjectOwnership, as
     res.status(502).json({ error: 'backend_error', message: e?.message || String(e) });
   }
 });
-projectRouter.all('/api/project/:id/backend', requireProjectOwnership, async (req: any, res: any) => {
+projectRouter.all('/api/project/:id/backend', async (req: any, res: any) => {
   const id = String(req.params.id || '').replace(/[^a-zA-Z0-9_-]/g, '');
   if (!id || !projectExists(id)) {
     res.status(404).json({ error: 'not_found' });
@@ -458,7 +455,9 @@ projectRouter.all('/api/project/:id/backend', requireProjectOwnership, async (re
 });
 
 // Serve any file inside the project (relative paths resolve CSS/JS/images).
-projectRouter.get('/api/project/:id/*splat', requireProjectOwnership, (req: any, res: any) => {
+// No ownership gate: same headerless-iframe capability model as the index
+// routes above.
+projectRouter.get('/api/project/:id/*splat', (req: any, res: any) => {
   const id = String(req.params.id || '').replace(/[^a-zA-Z0-9_-]/g, '');
   let rel = Array.isArray(req.params.splat) ? req.params.splat.join('/') : String(req.params.splat || '');
   if (rel.endsWith('/')) rel += 'index.html'; // directory URL → its index page
@@ -473,6 +472,9 @@ projectRouter.get('/api/project/:id/*splat', requireProjectOwnership, (req: any,
   // it still needs the backend bootstrap injected wherever it is served from.
   const entry = findIndexEntry(id);
   if (entry && rel === entry) {
+    // Same opaque-origin isolation as the index route: this entry page may
+    // open full-screen in a new tab.
+    res.setHeader('Content-Security-Policy', 'sandbox allow-scripts allow-forms allow-modals allow-popups allow-pointer-lock');
     res.send(injectBackendBootstrap(id, content, !!findBackendEntry(id)));
     return;
   }

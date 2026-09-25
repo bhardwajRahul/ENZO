@@ -1357,6 +1357,50 @@ body[data-craft="home"] hr.border-t {
 .mp-result-play { color: rgba(255, 255, 255, 0.3); flex-shrink: 0; transition: color 0.15s; }
 .mp-result:hover .mp-result-play { color: #f0968a; }
 
+/* Taste + recent suggestions in the search panel — same shell idiom:
+   monochrome, coral reserved for hover accents. */
+.mp-taste-sec { display: flex; flex-direction: column; gap: 6px; }
+.mp-taste-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.45);
+  padding: 0 8px;
+}
+.mp-chip-clear {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: inherit; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.3);
+  transition: color 0.15s;
+}
+.mp-chip-clear:hover { color: #f0968a; }
+.mp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mp-chip {
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: transparent;
+  font-family: inherit;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.6);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.mp-chip:hover { color: #fff; border-color: rgba(255, 255, 255, 0.22); background: rgba(255, 255, 255, 0.04); }
+
+/* Voice glow — the chat bar's light-blue sweep while the model talks.
+   framer-motion drives the travel; this is only the band's paint. */
+.voice-glow-sweep {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(125, 211, 252, 0.10) 22%,
+    rgba(125, 211, 252, 0.38) 50%,
+    rgba(125, 211, 252, 0.10) 78%,
+    transparent 100%
+  );
+  filter: blur(7px);
+}
+
 /* Equalizer overlay — same full-card shell as search; monochrome with the
    single coral accent reserved for the Enhance-on state and the active preset. */
 .mp-eq {

@@ -52,7 +52,11 @@ RUN VITE_GOOGLE_AUTH=0 VITE_THEME_VARIANT=$THEME_VARIANT npm run build
 FROM node:22-slim AS runtime
 # /app is created node-owned; every file that lands in it arrives via
 # --chown, so the runtime can write its caches without a fat chown layer.
-RUN mkdir -p /app && chown node:node /app
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ \
+ && rm -rf /var/lib/apt/lists/* \
+ && mkdir -p /app \
+ && chown node:node /app
 WORKDIR /app
 USER node
 

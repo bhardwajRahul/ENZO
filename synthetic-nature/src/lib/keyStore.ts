@@ -48,6 +48,23 @@ export function getProviderKeys(): Record<string, string> {
   return out
 }
 
+// A double-pasted key (the same key concatenated twice) validates nowhere and
+// only surfaces as a provider 401 later. Cut at the second marker when the
+// paste is visibly doubled.
+const KEY_MARKERS: Record<string, string> = {
+  groq: 'gsk_',
+  nvidia: 'nvapi',
+  openrouter: 'sk-or-v1',
+}
+
+function collapseDoubled(provider: string, raw: string): string {
+  const val = (raw ?? '').trim()
+  const marker = KEY_MARKERS[provider]
+  if (!marker) return val
+  const second = val.indexOf(marker, marker.length)
+  return second > 0 ? val.slice(0, second) : val
+}
+
 /**
  * Write only the providers present in `keys` to the device store (values are
  * trimmed; empty strings remove). Providers absent from the object are left
@@ -56,7 +73,7 @@ export function getProviderKeys(): Record<string, string> {
 export function saveProviderKeys(keys: Record<string, string>): string[] {
   const stored: string[] = []
   for (const [k, raw] of Object.entries(keys)) {
-    const val = (raw ?? '').trim()
+    const val = collapseDoubled(k, raw)
     if (val) {
       keyVault.setItem(keyId(k), val)
       const alias = LEGACY_ALIASES[k]
