@@ -29,6 +29,15 @@
   <a href="#quickstart"><img src="https://img.shields.io/badge/docker-ghcr.io%2Ftheguysudo%2Fenzo-2496ed" alt="Docker"></a>
   <a href="#quickstart"><img src="https://img.shields.io/badge/models-300%2B-58d68d" alt="Models"></a>
   <a href="#security"><img src="https://img.shields.io/badge/self--hosted-BYOK-purple" alt="Self-hosted"></a>
+  <a href="https://github.com/encoreshao/github-trending/tree/main/docs/topics/llm/2026/09"><img src="https://img.shields.io/badge/GitHub%20Trending-LLM%20%2317%20%E2%86%92%20%2319-black?logo=github&logoColor=white" alt="GitHub Trending — LLM topic, #17 then #19"></a>
+  <a href="https://tdd.cat"><img src="https://img.shields.io/badge/The%20Daily%20Diff-featured-blue" alt="The Daily Diff"></a>
+  <a href="https://openalternative.co/enzo"><img src="https://img.shields.io/badge/OpenAlternative-listed-blue" alt="OpenAlternative"></a>
+  <a href="https://agentspace.cc/tool/enzo"><img src="https://img.shields.io/badge/agentspace.cc-listed-blue" alt="agentspace.cc"></a>
+  <a href="https://followagents.com/en/agents/enzo"><img src="https://img.shields.io/badge/followagents-listed-blue" alt="followagents"></a>
+  <a href="https://news.lavx.hu/article/self-hosted-ai-workspace-enzo-runs-300-models-on-your-own-keys-with-no-middleman"><img src="https://img.shields.io/badge/Lavx%20News-article-blue" alt="The Lavx News"></a>
+  <a href="https://revesery.com/@alex/how-to-set-up-the-enzo-self-hosted-ai-workspace-muffcxe4"><img src="https://img.shields.io/badge/Revesery-guide-blue" alt="Revesery"></a>
+  <a href="https://www.linkedin.com/posts/daniel-kornas_your-ai-workspace-doesnt-need-to-sit-between-activity-7508321788356046848-iyST"><img src="https://img.shields.io/badge/Daniel%20Kornas-LinkedIn%20%2B%20X-blue" alt="Daniel Kornas on LinkedIn and X"></a>
+  <a href="https://www.facebook.com/ncybersec/posts/enzo-a-self-hosted-bring-your-own-key-ai-workspace-for-chatting-with-300-models-/1507565364732231/"><img src="https://img.shields.io/badge/Facebook-mentioned-blue" alt="Mentioned on Facebook"></a>
 </p>
 
 > **Chat with 300+ models. Build agents that write their own operating manuals. Research, generate code, run it all — on your keys, on your infrastructure.** When you send a message, the request goes from your browser through ENZO to the provider you picked, and you pay that provider their normal price. **Nothing sits in between taking a cut.** There is no ENZO account, no usage meter, no subscription.
@@ -306,7 +315,7 @@ This image is generated from the same codebase that runs https://enzo-hub.duckdn
 
 ## Where ENZO has been mentioned
 
-- **GitHub Trending** (LLM topic) — Sep 9–10, 2026
+- **GitHub Trending** (LLM topic), Sep 9–10 2026 — **#17 on Sep 9 → #19 on Sep 10**. Evidence: [the per-topic trending archive (the two CSV rows)](https://github.com/encoreshao/github-trending/tree/main/docs/topics/llm/2026/09) · [an independent digest's ranked trending table — #9, Sep 8–9](https://github.com/Piyush0053/ai-daily-digest/blob/main/digests/2026-09-08.md)
 - **[The Daily Diff](https://tdd.cat)** — "ENZO brings self-hosted AI workspace with agents and BYOK" (Sep 19, 2026)
 - **[OpenAlternative](https://openalternative.co/enzo)** — listed as an open-source, self-hosted alternative
 - **[agentspace.cc](https://agentspace.cc/tool/enzo)** · **[followagents.com](https://followagents.com/en/agents/enzo)** — agent directory listings
