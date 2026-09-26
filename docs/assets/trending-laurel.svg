@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="250" height="55" viewBox="0 0 250 53" role="img" aria-label="GitHub Trending — LLM topic, #17 on Sep 9, #19 on Sep 10">
+  <!-- Trendshift-style badge (inspired by the real one on ZhengPeng7/BiRefNet):
+       white panel, purple border, GITHUB TRENDING centered on top, a laurel
+       wreath at the left (x 10-58), the rank line starting at x=64 — the text
+       never crosses the icon. Evidence for the numbers is in the linked repo. -->
+  <rect x="0.5" y="0.5" width="249" height="52" rx="10" fill="#FFFFFF" stroke="#4a0e99" stroke-width="1"/>
+
+  <!-- top label — centered across the panel, clears the laurel -->
+  <text x="124" y="21" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="9" fill="#4a0e99" letter-spacing="1">GITHUB TRENDING</text>
+
+  <!-- laurel wreath — two branches with leaves, 48x45 box at (10,8) -->
+  <g stroke="#4a0e99" stroke-width="1.5" fill="none">
+    <path d="M 21,46 Q 12,30 13,10"/>
+    <path d="M 47,46 Q 56,30 55,10"/>
+  </g>
+  <g fill="#4a0e99">
+    <ellipse cx="20" cy="44" rx="2.4" ry="6.5" transform="rotate(-15 20 44)"/>
+    <ellipse cx="16" cy="38.5" rx="2.4" ry="6.5" transform="rotate(-30 16 38.5)"/>
+    <ellipse cx="13.5" cy="32.5" rx="2.4" ry="6.5" transform="rotate(-45 13.5 32.5)"/>
+    <ellipse cx="12" cy="26" rx="2.4" ry="6.5" transform="rotate(-60 12 26)"/>
+    <ellipse cx="11.5" cy="19.5" rx="2.4" ry="6.5" transform="rotate(-75 11.5 19.5)"/>
+    <ellipse cx="12.5" cy="13.5" rx="2.4" ry="6.5" transform="rotate(-88 12.5 13.5)"/>
+    <ellipse cx="48" cy="44" rx="2.4" ry="6.5" transform="rotate(15 48 44)"/>
+    <ellipse cx="52" cy="38.5" rx="2.4" ry="6.5" transform="rotate(30 52 38.5)"/>
+    <ellipse cx="54.5" cy="32.5" rx="2.4" ry="6.5" transform="rotate(45 54.5 32.5)"/>
+    <ellipse cx="56" cy="26" rx="2.4" ry="6.5" transform="rotate(60 56 26)"/>
+    <ellipse cx="56.5" cy="19.5" rx="2.4" ry="6.5" transform="rotate(75 56.5 19.5)"/>
+    <ellipse cx="55.5" cy="13.5" rx="2.4" ry="6.5" transform="rotate(88 55.5 13.5)"/>
+  </g>
+
+  <!-- rank line — starts right of the laurel, never crosses it -->
+  <text x="64" y="40" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700" fill="#4a0e99">#17 → #19 · LLM topic</text>
+</svg>
