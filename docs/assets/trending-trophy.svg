@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="250" height="55" viewBox="0 0 250 55" role="img" aria-label="GitHub Trending — LLM topic, #17 on Sep 9, #19 on Sep 10">
+  <!-- Trendshift-style trophy badge: big two-panel black badge, GitHub mark,
+       gold rank. Evidence for the numbers lives in the repo it links to. -->
+  <defs>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.07"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.25"/>
+    </linearGradient>
+  </defs>
+  <rect x="0.5" y="0.5" width="249" height="54" rx="10" fill="#0a0a0c" stroke="#ffffff" stroke-opacity="0.12"/>
+  <rect x="0.5" y="0.5" width="249" height="54" rx="10" fill="url(#sheen)"/>
+
+  <!-- left panel: GitHub mark + wordmark -->
+  <g transform="translate(16,17.5) scale(1.25)" fill="#ffffff">
+    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.48.63.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 1.93 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+  </g>
+  <text x="42" y="32.5" font-family="-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" font-weight="650" fill="#ffffff" letter-spacing="0.2">GitHub Trending</text>
+
+  <!-- divider -->
+  <line x1="140" y1="10" x2="140" y2="45" stroke="#ffffff" stroke-opacity="0.10"/>
+
+  <!-- right panel: topic + gold trophy rank -->
+  <text x="150" y="21" font-family="-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="8.5" fill="#ffffff" fill-opacity="0.45" letter-spacing="0.6">LLM TOPIC · SEP 9–10</text>
+  <g transform="translate(150,33) scale(0.75)" fill="#e8c547">
+    <path d="M -7,-12 h14 v5 a7,7 0 0 1 -14,0 z"/>
+    <path d="M -7,-11 a5,5 0 1 0 -5,5 h3" fill="none" stroke="#e8c547" stroke-width="1.8"/>
+    <path d="M 7,-11 a5,5 0 1 1 5,5 h-3" fill="none" stroke="#e8c547" stroke-width="1.8"/>
+    <rect x="-1.5" y="-1" width="3" height="5"/>
+    <rect x="-6" y="5" width="12" height="3" rx="1"/>
+  </g>
+  <text x="162" y="38.5" font-family="-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="700" fill="#e8c547" letter-spacing="0.4">#17 → #19</text>
+</svg>
