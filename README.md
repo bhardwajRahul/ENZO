@@ -1,12 +1,12 @@
-# ENZO — open-source, self-hosted AI workspace
+# ENZO 
 
 <p align="center">
-  <img src="docs/assets/enzo-banner.svg" alt="ENZO title bar — the official shield logo forming from shards on a white tile, beside the ENZO wordmark, with a hand-drawn circle sketching itself around the lockup" width="860">
+  <img src="docs/assets/enzo-banner.svg" alt="ENZO title bar — the official shield logo forming from shards on a white tile, beside the ENZO wordmark, with a hand-drawn circle sketching itself around the lockup" width="700">
 </p>
 
 <p align="center">
   <a href="https://github.com/encoreshao/github-trending/tree/main/docs/topics/llm/2026/09" target="_blank">
-    <img src="docs/assets/trending-laurel.svg" alt="GitHub Trending — LLM topic, #17 on Sep 9 → #19 on Sep 10 (evidence in the linked per-topic archive)" width="200">
+    <img src="docs/assets/trending-laurel.svg" alt="GitHub Trending — LLM topic, #17 on Sep 9 → #19 on Sep 10 (evidence in the linked per-topic archive)" width="250">
   </a>
 </p>
 
