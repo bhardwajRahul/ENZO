@@ -26,8 +26,8 @@
     </g>
   </g>
 
-  <text x="180" y="26" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="9" font-weight="700" letter-spacing="1.7" fill="#7049A6">GITHUB TRENDING</text>
-  <text x="180" y="56" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#321B4C">#17 → #19</text>
+  <text x="180" y="27" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="12" font-weight="800" letter-spacing="1.7" fill="#7049A6">GITHUB TRENDING</text>
+  <text x="180" y="56" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="800" fill="#321B4C">#17 → #19</text>
   <rect x="137" y="65" width="86" height="17" rx="8.5" fill="#F1EAF8"/>
-  <text x="180" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="9" font-weight="700" letter-spacing="0.6" fill="#68419A">LLM TOPIC</text>
+  <text x="180" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="9" font-weight="800" letter-spacing="0.6" fill="#68419A">LLM TOPIC</text>
 </svg>
