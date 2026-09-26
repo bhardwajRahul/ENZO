@@ -1,33 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="250" height="55" viewBox="0 0 250 53" role="img" aria-label="GitHub Trending — LLM topic, #17 on Sep 9, #19 on Sep 10">
-  <!-- Trendshift-style badge (inspired by the real one on ZhengPeng7/BiRefNet):
-       white panel, purple border, GITHUB TRENDING centered on top, a laurel
-       wreath at the left (x 10-58), the rank line starting at x=64 — the text
-       never crosses the icon. Evidence for the numbers is in the linked repo. -->
-  <rect x="0.5" y="0.5" width="249" height="52" rx="10" fill="#FFFFFF" stroke="#4a0e99" stroke-width="1"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="72" viewBox="0 0 320 72" role="img" aria-label="GitHub Trending — LLM topic, #17 on Sep 9, #19 on Sep 10">
+  <rect x="0.75" y="0.75" width="318.5" height="70.5" rx="12" fill="#FCFAFF" stroke="#E6DDF1" stroke-width="1.5"/>
 
-  <!-- top label — centered across the panel, clears the laurel -->
-  <text x="124" y="21" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="9" fill="#4a0e99" letter-spacing="1">GITHUB TRENDING</text>
-
-  <!-- laurel wreath — two branches with leaves, 48x45 box at (10,8) -->
-  <g stroke="#4a0e99" stroke-width="1.5" fill="none">
-    <path d="M 21,46 Q 12,30 13,10"/>
-    <path d="M 47,46 Q 56,30 55,10"/>
+  <circle cx="36" cy="36" r="25" fill="#F1EAFB"/>
+  <g fill="#68419A">
+    <ellipse cx="25" cy="46" rx="2.5" ry="5" transform="rotate(-35 25 46)"/>
+    <ellipse cx="20" cy="39" rx="2.5" ry="5" transform="rotate(-50 20 39)"/>
+    <ellipse cx="18" cy="31" rx="2.5" ry="5" transform="rotate(-75 18 31)"/>
+    <ellipse cx="19" cy="24" rx="2.5" ry="5" transform="rotate(-105 19 24)"/>
+    <ellipse cx="23" cy="18" rx="2.5" ry="5" transform="rotate(-130 23 18)"/>
+    <ellipse cx="47" cy="46" rx="2.5" ry="5" transform="rotate(35 47 46)"/>
+    <ellipse cx="52" cy="39" rx="2.5" ry="5" transform="rotate(50 52 39)"/>
+    <ellipse cx="54" cy="31" rx="2.5" ry="5" transform="rotate(75 54 31)"/>
+    <ellipse cx="53" cy="24" rx="2.5" ry="5" transform="rotate(105 53 24)"/>
+    <ellipse cx="49" cy="18" rx="2.5" ry="5" transform="rotate(130 49 18)"/>
   </g>
-  <g fill="#4a0e99">
-    <ellipse cx="20" cy="44" rx="2.4" ry="6.5" transform="rotate(-15 20 44)"/>
-    <ellipse cx="16" cy="38.5" rx="2.4" ry="6.5" transform="rotate(-30 16 38.5)"/>
-    <ellipse cx="13.5" cy="32.5" rx="2.4" ry="6.5" transform="rotate(-45 13.5 32.5)"/>
-    <ellipse cx="12" cy="26" rx="2.4" ry="6.5" transform="rotate(-60 12 26)"/>
-    <ellipse cx="11.5" cy="19.5" rx="2.4" ry="6.5" transform="rotate(-75 11.5 19.5)"/>
-    <ellipse cx="12.5" cy="13.5" rx="2.4" ry="6.5" transform="rotate(-88 12.5 13.5)"/>
-    <ellipse cx="48" cy="44" rx="2.4" ry="6.5" transform="rotate(15 48 44)"/>
-    <ellipse cx="52" cy="38.5" rx="2.4" ry="6.5" transform="rotate(30 52 38.5)"/>
-    <ellipse cx="54.5" cy="32.5" rx="2.4" ry="6.5" transform="rotate(45 54.5 32.5)"/>
-    <ellipse cx="56" cy="26" rx="2.4" ry="6.5" transform="rotate(60 56 26)"/>
-    <ellipse cx="56.5" cy="19.5" rx="2.4" ry="6.5" transform="rotate(75 56.5 19.5)"/>
-    <ellipse cx="55.5" cy="13.5" rx="2.4" ry="6.5" transform="rotate(88 55.5 13.5)"/>
+  <g fill="none" stroke="#68419A" stroke-linecap="round" stroke-width="1.6">
+    <path d="M28 52Q17 36 21 17"/>
+    <path d="M44 52Q55 36 51 17"/>
+    <path d="M28 52Q36 57 44 52"/>
   </g>
 
-  <!-- rank line — starts right of the laurel, never crosses it -->
-  <text x="64" y="40" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700" fill="#4a0e99">#17 → #19 · LLM topic</text>
+  <text x="76" y="27" font-family="Arial,Helvetica,sans-serif" font-size="9" font-weight="700" letter-spacing="1.5" fill="#7049A6">GITHUB TRENDING</text>
+  <text x="76" y="51" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#321B4C">#17 → #19<tspan font-size="11" font-weight="600" fill="#68419A"> · LLM topic</tspan></text>
 </svg>
